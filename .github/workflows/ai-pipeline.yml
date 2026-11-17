@@ -22,9 +22,6 @@ permissions:
 
 env:
   EVAL_AGENT: codex
-  # The provided key is issued for the QA.GURU OpenAI-compatible adapter, not
-  # api.openai.com — codex login/exec would 401 against the default endpoint.
-  OPENAI_BASE_URL: https://autotests.ai/adapter/v1
 
 jobs:
   evals:
