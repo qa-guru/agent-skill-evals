@@ -29,6 +29,9 @@ env:
 # (agent fix plus an independent browser verification) — and judge (opt-in)
 # re-runs every case under an LLM rubric. A failed stage stops the chain so
 # broken builds never burn eval tokens; a new eval group needs a new stage.
+# Exception: a FAILED login TEST warns and continues — SUT/test mismatch is
+# a valid signal this pipeline exists to measure; only a run that never
+# executes (no JUnit XML) is an infra failure worth stopping for.
 # Toolchain setup is identical in every stage via .github/actions/eval-env.
 jobs:
   preflight:
@@ -54,8 +57,18 @@ jobs:
       #   with SE_OFFLINE=true, so Selenium Manager cannot download anything
       #   during the eval.
       # The SUT is the repo-local login.html (file://) — no external service.
+      # A failed TEST warns and continues (both caches are still warm); only
+      # a run that never executes — no JUnit XML — is an infra failure.
       - name: Warm caches — authorized login-success browser run
-        run: gradle test --tests 'tests.LoginTest.successfulLoginTest'
+        run: |
+          if gradle test --tests 'tests.LoginTest.successfulLoginTest'; then
+            echo "login-success: PASS"
+          elif [ -f build/test-results/test/TEST-tests.LoginTest.xml ]; then
+            echo "::warning::login-success FAILED — SUT/test mismatch is a valid signal; caches are warm, the pipeline continues"
+          else
+            echo "::error::login-success did not execute — no JUnit XML (infra/env failure)"
+            exit 1
+          fi
 
   tests:
     name: tests (free)
@@ -74,8 +87,18 @@ jobs:
       - name: Offline compile check
         run: sh tools/compile-tests.sh
 
+      # Same contract as the preflight warmup: a failed test warns and the
+      # chain continues; a run that never executes is an infra failure.
       - name: Offline wrapper check — login-success
-        run: sh tools/run-tests.sh --allow-sut one login-success
+        run: |
+          if sh tools/run-tests.sh --allow-sut one login-success; then
+            echo "wrapper login-success: PASS"
+          elif [ -f build/test-results/test/TEST-tests.LoginTest.xml ]; then
+            echo "::warning::login-success FAILED — SUT/test mismatch is a valid signal; evals stage still runs"
+          else
+            echo "::error::login-success did not execute — no JUnit XML (infra/env failure)"
+            exit 1
+          fi
 
       - name: Evidence parser unit tests
         run: python3 -B -m unittest discover -s evals -p 'test_*.py'
