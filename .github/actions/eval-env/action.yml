@@ -1,0 +1,99 @@
+name: eval-env
+description: >-
+  Shared environment for every ai-pipeline stage: Java 21, pinned Gradle
+  9.6.0, Python 3, the Gradle/Selenium caches and the headless-browser init
+  script. Keeps the per-stage job steps identical so stages stay readable.
+inputs:
+  save-cache:
+    description: >-
+      'true' restores the caches and saves them at job end (preflight stage
+      only). 'false' restores read-only: downstream stages can never publish
+      a half-updated cache.
+    required: true
+  codex:
+    description: >-
+      'true' additionally installs the pinned Codex CLI (evals/judge stages).
+      Login stays a per-job step so secrets remain step-scoped.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Java 21 (Temurin)
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    # tools/versions.sh requires Gradle exactly 9.6.0 on PATH and the repo has
+    # no wrapper (tools/*.sh call `gradle` directly), so the pinned
+    # distribution is installed and checksum-verified instead of generating
+    # a wrapper.
+    - name: Install Gradle 9.6.0
+      shell: bash
+      run: |
+        curl -fsSL -o "$RUNNER_TEMP/gradle.zip" \
+          https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
+        echo "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  $RUNNER_TEMP/gradle.zip" | sha256sum -c -
+        unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/gradle-9.6.0/bin" >> "$GITHUB_PATH"
+
+    # Both caches are shared state the eval run depends on:
+    # ~/.gradle because tools/*.sh resolve dependencies with
+    # `gradle --offline`, ~/.cache/selenium because the eval forces
+    # SE_OFFLINE=true (see the warmup step in the preflight job).
+    - name: Restore Gradle + Selenium caches (saved at job end)
+      if: inputs.save-cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle
+          ~/.cache/selenium
+        key: ${{ runner.os }}-evals-${{ hashFiles('build.gradle') }}
+        restore-keys: |
+          ${{ runner.os }}-evals-
+
+    - name: Restore Gradle + Selenium caches (read-only)
+      if: inputs.save-cache != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.gradle
+          ~/.cache/selenium
+        key: ${{ runner.os }}-evals-${{ hashFiles('build.gradle') }}
+        restore-keys: |
+          ${{ runner.os }}-evals-
+        fail-on-cache-miss: true
+
+    - name: Python 3 (evidence adapter requires 3.9+)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    # CI runners have no display, and the project has no headless config —
+    # headed Chrome dies with SessionNotCreatedException. A -D flag on the
+    # gradle CLI does NOT reach forked test JVMs, and codex tool-call env
+    # can't be relied on either. A Gradle init script in ~/.gradle is the one
+    # channel that reaches every test JVM: the warmup, tools/*.sh wrappers,
+    # the agent's runs inside `codex exec` (evals.sh mounts ~/.gradle via
+    # --add-dir) and the eval's independent verification build. Written in
+    # every stage so a stale restored cache can never lose it.
+    - name: Force headless browser for all Gradle test runs
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.gradle/init.d"
+        cat > "$HOME/.gradle/init.d/selenide-headless.gradle" <<'EOF'
+        allprojects {
+            tasks.withType(Test).configureEach {
+                systemProperty 'selenide.headless', 'true'
+            }
+        }
+        EOF
+
+    - name: Install Codex CLI
+      if: inputs.codex == 'true'
+      shell: bash
+      run: |
+        npm install --global @openai/codex@0.167.0
+        codex --version

@@ -30,6 +30,15 @@ post-merge signal, not a per-PR gate. Runs are serialized per ref via
 `concurrency` — a merge burst queues rather than overlapping paid runs. A
 `schedule` block is present but commented out; uncomment deliberately.
 
+Four sequential stages: `preflight` installs the toolchain and warms the
+shared caches → `tests` runs the free offline verification (compile,
+wrapper, evidence unit tests, case listing) → `evals` logs Codex in, runs the
+paid cases and uploads evidence → `judge` (only when the `LLM_JUDGE`
+repository variable is `1`) re-runs all cases under an LLM rubric and uploads
+its evidence separately. A failed stage stops the chain before any further
+spend. Every stage provisions the same environment via the composite action
+`.github/actions/eval-env`.
+
 Required configuration (Settings → Secrets and variables → Actions):
 
 | Kind     | Name                 | Required | Purpose                                        |

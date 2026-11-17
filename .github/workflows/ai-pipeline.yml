@@ -23,75 +23,25 @@ permissions:
 env:
   EVAL_AGENT: codex
 
+# Stage chain: preflight warms the shared caches, tests verifies everything
+# free and offline, evals spends on paid model calls, judge (opt-in) re-runs
+# the cases under an LLM rubric — a failed stage stops the chain so broken
+# builds never burn eval tokens. Toolchain setup is identical in every stage
+# via the composite action .github/actions/eval-env.
 jobs:
-  evals:
+  preflight:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Java 21 (Temurin)
-        uses: actions/setup-java@v4
+      - name: Toolchain + caches
+        uses: ./.github/actions/eval-env
         with:
-          distribution: temurin
-          java-version: '21'
-
-      # tools/versions.sh requires Gradle exactly 9.6.0 on PATH and the repo has
-      # no wrapper (tools/*.sh call `gradle` directly), so the pinned
-      # distribution is installed and checksum-verified instead of generating
-      # a wrapper.
-      - name: Install Gradle 9.6.0
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/gradle.zip" \
-            https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
-          echo "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  $RUNNER_TEMP/gradle.zip" | sha256sum -c -
-          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/gradle-9.6.0/bin" >> "$GITHUB_PATH"
-
-      # Both caches are shared writable state the eval run depends on:
-      # ~/.gradle because tools/*.sh resolve dependencies with
-      # `gradle --offline`, ~/.cache/selenium because the eval forces
-      # SE_OFFLINE=true (see the warmup step below).
-      - name: Restore Gradle + Selenium caches
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle
-            ~/.cache/selenium
-          key: ${{ runner.os }}-evals-${{ hashFiles('build.gradle') }}
-          restore-keys: |
-            ${{ runner.os }}-evals-
-
-      - name: Python 3 (evidence adapter requires 3.9+)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install Codex CLI
-        run: |
-          npm install --global @openai/codex@0.167.0
-          codex --version
+          save-cache: 'true'
 
       - name: CLI preflight (java/javac 21, gradle 9.6.0, git)
         run: sh tools/versions.sh
-
-      # CI runners have no display, and the project has no headless config —
-      # headed Chrome dies with SessionNotCreatedException. A -D flag on the
-      # gradle CLI does NOT reach forked test JVMs, and codex tool-call env
-      # can't be relied on either. A Gradle init script in ~/.gradle is the one
-      # channel that reaches every test JVM: the warmup, tools/*.sh wrappers,
-      # the agent's runs inside `codex exec` (evals.sh mounts ~/.gradle via
-      # --add-dir) and the eval's independent verification build.
-      - name: Force headless browser for all Gradle test runs
-        run: |
-          mkdir -p "$HOME/.gradle/init.d"
-          cat > "$HOME/.gradle/init.d/selenide-headless.gradle" <<'EOF'
-          allprojects {
-              tasks.withType(Test).configureEach {
-                  systemProperty 'selenide.headless', 'true'
-              }
-          }
-          EOF
 
       # One online browser run warms BOTH caches at once:
       # - ~/.gradle gets the full test RUNTIME classpath — `gradle testClasses`
@@ -105,6 +55,19 @@ jobs:
       - name: Warm caches — authorized login-success browser run
         run: gradle test --tests 'tests.LoginTest.successfulLoginTest'
 
+  tests:
+    name: tests (free)
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain + caches
+        uses: ./.github/actions/eval-env
+        with:
+          save-cache: 'false'
+
       # Proves the sanctioned wrappers now work fully offline on warm caches.
       - name: Offline compile check
         run: sh tools/compile-tests.sh
@@ -112,11 +75,25 @@ jobs:
       - name: Offline wrapper check — login-success
         run: sh tools/run-tests.sh --allow-sut one login-success
 
-      - name: Free checks — evidence parser unit tests
+      - name: Evidence parser unit tests
         run: python3 -B -m unittest discover -s evals -p 'test_*.py'
 
-      - name: Free checks — eval case listing
+      - name: Eval case listing
         run: sh tools/evals.sh list
+
+  evals:
+    name: evals (paid)
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain + caches + Codex CLI
+        uses: ./.github/actions/eval-env
+        with:
+          save-cache: 'false'
+          codex: 'true'
 
       - name: Codex login (repo secret required)
         env:
@@ -136,24 +113,63 @@ jobs:
       - name: Run eval cases (paid model calls)
         run: sh tools/evals.sh --allow-agent all
 
-      # Opt-in paid pass: LLM_JUDGE is only honored while a case is executing,
-      # so a judged evaluation re-runs the agent for every case — that is a
-      # second full set of agent calls plus one judge call per case. Enable by
-      # setting the repository VARIABLE LLM_JUDGE=1 (Settings > Secrets and
-      # variables > Actions > Variables). Kept as a separate gated step so the
-      # default manual run stays cheaper and deterministic-only.
-      - name: LLM-judged eval pass (opt-in via vars.LLM_JUDGE=1)
-        if: vars.LLM_JUDGE == '1'
-        env:
-          LLM_JUDGE: '1'
-        run: sh tools/evals.sh --allow-agent all
-
       # Run transcripts are evidence: upload on every outcome, never clean.
       - name: Upload eval evidence (evals/runs/)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: evals-runs-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evals/runs/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Opt-in paid pass: LLM_JUDGE is only honored while a case is executing,
+  # so a judged evaluation re-runs the agent for every case — that is a
+  # second full set of agent calls plus one judge call per case. Enable by
+  # setting the repository VARIABLE LLM_JUDGE=1 (Settings > Secrets and
+  # variables > Actions > Variables). Kept as a separate gated stage so the
+  # default run stays cheaper and deterministic-only.
+  judge:
+    name: judge (paid, opt-in)
+    needs: evals
+    if: vars.LLM_JUDGE == '1'
+    runs-on: ubuntu-latest
+    env:
+      LLM_JUDGE: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain + caches + Codex CLI
+        uses: ./.github/actions/eval-env
+        with:
+          save-cache: 'false'
+          codex: 'true'
+
+      - name: Codex login (repo secret required)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
+        run: |
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            printenv OPENAI_API_KEY | codex login --with-api-key
+          elif [ -n "${CODEX_ACCESS_TOKEN:-}" ]; then
+            printenv CODEX_ACCESS_TOKEN | codex login --with-access-token
+          else
+            echo "::error::No Codex credential. Add repository secret OPENAI_API_KEY (or CODEX_ACCESS_TOKEN) under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          codex login status
+
+      - name: LLM-judged eval pass (re-runs all cases)
+        run: sh tools/evals.sh --allow-agent all
+
+      # Run transcripts are evidence: upload on every outcome, never clean.
+      - name: Upload judge evidence (evals/runs/)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: judge-runs-run-${{ github.run_id }}-${{ github.run_attempt }}
           path: evals/runs/
           if-no-files-found: warn
           retention-days: 30
