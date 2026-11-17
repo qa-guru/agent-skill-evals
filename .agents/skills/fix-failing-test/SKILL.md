@@ -17,7 +17,7 @@ Follow [AGENTS.md](../../../AGENTS.md) throughout.
 8. Re-run the same scope after the fix; if flaky, collect repeated isolated runs before claiming a resolution.
 
 ## Completion
-Report root cause with evidence, the minimal change, exact verification results and any remaining uncertainty.
+Name the classification from step 4 first (e.g. "test defect — stale expectation"), then report root cause with evidence, the minimal change, exact verification results and any remaining uncertainty.
 If reproduction is blocked, state BLOCKED rather than presenting a hypothesis as a confirmed fix.
 
 Example request: Investigate why this login test fails.
