@@ -75,21 +75,23 @@ jobs:
       - name: CLI preflight (java/javac 21, gradle 9.6.0, git)
         run: sh tools/versions.sh
 
-      # A cold ~/.gradle cannot resolve dependencies for `gradle --offline`,
-      # so they are fetched online exactly once before any wrapper runs.
-      - name: Resolve Gradle dependencies (online)
-        run: gradle testClasses
+      # One online browser run warms BOTH caches at once:
+      # - ~/.gradle gets the full test RUNTIME classpath — `gradle testClasses`
+      #   alone only resolves the compile classpath, and tools/*.sh then run
+      #   `gradle --offline`, which fails on any missing runtime jar;
+      # - ~/.cache/selenium gets the matching Chrome driver — REQUIRED because
+      #   tools/evals.sh runs the agent and the independent verification build
+      #   with SE_OFFLINE=true, so Selenium Manager cannot download anything
+      #   during the eval.
+      # The SUT is the repo-local login.html (file://) — no external service.
+      - name: Warm caches — authorized login-success browser run
+        run: gradle test --tests 'tests.LoginTest.successfulLoginTest'
 
+      # Proves the sanctioned wrappers now work fully offline on warm caches.
       - name: Offline compile check
         run: sh tools/compile-tests.sh
 
-      # REQUIRED warmup, not optional: tools/evals.sh runs the agent and the
-      # independent verification build with SE_OFFLINE=true, so Selenium
-      # Manager cannot download anything during the eval — ~/.cache/selenium
-      # must already hold a driver matching the runner's Chrome. This is the
-      # only step allowed to perform a real browser run for cache warming; the
-      # SUT is the repo-local login.html (file://), no external service.
-      - name: Warm Selenium driver cache (authorized browser run)
+      - name: Offline wrapper check — login-success
         run: sh tools/run-tests.sh --allow-sut one login-success
 
       - name: Free checks — evidence parser unit tests
