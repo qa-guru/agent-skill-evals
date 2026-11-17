@@ -21,6 +21,13 @@ def invocations(command):
             parts[-1].append(token)
     for args in parts:
         while args and (args[0] in {"command", "exec", "env"} or re.match(r"^\w+=", args[0])):
+            if re.match(r"^\w+=\$\(", args[0]):
+                depth = args[0].count("(") - args[0].count(")")
+                args = args[1:]
+                while args and depth > 0:
+                    depth += args[0].count("(") - args[0].count(")")
+                    args = args[1:]
+                continue
             args = args[1:]
         if not args:
             continue
@@ -41,7 +48,6 @@ def invocations(command):
 def command_actions(item, completed):
     actions = []
     output = item.get("aggregated_output", "")
-    login_run = False
     for args in invocations(item["command"]):
         program = args[0].removeprefix("./")
         script = re.search(r"(?:^|/)tools/(run-tests|versions|compile-tests)\.sh$", program)
@@ -57,11 +63,13 @@ def command_actions(item, completed):
                         actions.append("list")
                 if "--allow-sut" in args[1:]:
                     actions.append("test")
-                    login_run |= args[1:] == ["--allow-sut", "one", "login-success"]
         elif Path(program).name in {"gradle", "gradlew"}:
             if any(arg.rsplit(":", 1)[-1] == "test" for arg in args[1:]):
                 actions.append("test")
-    if login_run and completed:
+    if completed:
+        # The wrapper echoes "+ gradle ..." before exec'ing gradle; the output
+        # section is the evidence of a real login run regardless of how the
+        # command was invoked (env prefixes, command substitutions, wrappers).
         for section in re.split(r"(?m)(?=^\+ gradle )", output):
             if not section.startswith("+ gradle --offline test --tests 'tests.LoginTest.successfulLoginTest'\n"):
                 continue
@@ -138,6 +146,9 @@ def check_source(expected, actual, test, sut=None):
                 if not welcome or not login or len(re.findall(literal, want)) != 1:
                     raise ValueError("cannot derive expected literal from SUT and test")
                 expected_literal = re.sub(r"\{[A-Za-z_]+\}", login.group(1), welcome.group(1))
+                # text() matching compares DOM text, which collapses and trims
+                # whitespace like WebDriver getText does.
+                expected_literal = re.sub(r"\s+", " ", expected_literal).strip()
                 want = re.sub(literal, lambda _: f'text("{expected_literal}")', want, count=1)
             if re.findall(tokens, want) != re.findall(tokens, after[path].decode()):
                 raise ValueError("test is not the minimal stale-text correction")

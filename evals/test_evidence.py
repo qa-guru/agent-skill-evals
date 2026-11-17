@@ -66,6 +66,17 @@ class CommandTests(unittest.TestCase):
         self.assertNotIn("login-failure", command_actions(command(LOGIN, blocked, 1), True))
         self.assertIn("login-pass", command_actions(command(LOGIN, green), True))
 
+    def test_login_run_classified_from_output_regardless_of_invocation_form(self):
+        red = PREFIX + "com.codeborne.selenide.ex.ElementShould\n1 test completed, 1 failed\nBUILD FAILED\n"
+        green = PREFIX + "BUILD SUCCESSFUL\n"
+        wrapped = (
+            "XDG_CONFIG_HOME=$(mktemp -d /tmp/login-config.XXXXXX) "
+            "JAVA_TOOL_OPTIONS='-Dselenide.headless=true' "
+            "SE_OFFLINE=true SE_AVOID_STATS=true sh tools/run-tests.sh --allow-sut one login-success"
+        )
+        self.assertIn("login-failure", command_actions(command(wrapped, red, 1), True))
+        self.assertIn("login-pass", command_actions(command(wrapped, green), True))
+
 
 class ExtractionTests(unittest.TestCase):
     def setUp(self):
@@ -160,6 +171,17 @@ class PostStateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             check_source(self.expected, self.actual, TEST_PATH, sut)
         (self.actual / TEST_PATH).write_text(stale)
+        with self.assertRaises(ValueError):
+            check_source(self.expected, self.actual, TEST_PATH, sut)
+
+    def test_sut_literal_whitespace_is_normalized_like_dom_text(self):
+        sut = self.root / "login.html"
+        sut.write_text("<script>en: { welcome: '  spaced   out, {login}!', error: 'x' }</script>")
+        stale = 'class LoginTest { void test() { $("login-input").setValue("user1"); $("banner").shouldHave(text("Hola, user1!")); } }\n'
+        (self.expected / TEST_PATH).write_text(stale)
+        (self.actual / TEST_PATH).write_text(stale.replace("Hola, user1!", "spaced out, user1!"))
+        check_source(self.expected, self.actual, TEST_PATH, sut)
+        (self.actual / TEST_PATH).write_text(stale.replace("Hola, user1!", " spaced out, user1!"))
         with self.assertRaises(ValueError):
             check_source(self.expected, self.actual, TEST_PATH, sut)
 
