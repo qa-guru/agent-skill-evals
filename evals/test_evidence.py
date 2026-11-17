@@ -149,6 +149,20 @@ class PostStateTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     check_source(self.expected, self.actual, TEST_PATH)
 
+    def test_correction_must_match_sut_literal_not_committed(self):
+        sut = self.root / "login.html"
+        sut.write_text("<script>en: { welcome: 'New year, {login}!', error: 'x' }</script>")
+        stale = 'class LoginTest { void test() { $("login-input").setValue("user1"); $("banner").shouldHave(text("Hola, user1!")); } }\n'
+        (self.expected / TEST_PATH).write_text(stale)
+        (self.actual / TEST_PATH).write_text(stale.replace("Hola", "New year"))
+        check_source(self.expected, self.actual, TEST_PATH, sut)
+        (self.actual / TEST_PATH).write_text(stale.replace("Hola", "Ola"))
+        with self.assertRaises(ValueError):
+            check_source(self.expected, self.actual, TEST_PATH, sut)
+        (self.actual / TEST_PATH).write_text(stale)
+        with self.assertRaises(ValueError):
+            check_source(self.expected, self.actual, TEST_PATH, sut)
+
     def test_added_source_and_symlinks_are_rejected(self):
         added = self.actual / "Extra.java"
         added.write_text("class Extra {}")

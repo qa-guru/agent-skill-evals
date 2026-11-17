@@ -249,7 +249,7 @@ for f in $selected; do
 
   if [ -n "$FIX_TEST" ]; then
     grade_check "minimal test correction, no added/deleted source" \
-      python3 evals/evidence.py source "$abs_out/expected-src" "$abs_work/src" "${FIX_TEST#src/}"
+      python3 evals/evidence.py source "$abs_out/expected-src" "$abs_work/src" "${FIX_TEST#src/}" login.html
     if [ "$fails" -eq 0 ]; then
       verify="$abs_out/verification"
       mkdir "$verify"

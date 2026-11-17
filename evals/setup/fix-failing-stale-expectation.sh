@@ -3,8 +3,8 @@
 # evals/cases/fix-failing-stale-expectation.case. $1 = copied workdir.
 set -eu
 f="$1/src/test/java/tests/LoginTest.java"
-grep -Fq 'hello my friend, user1!' "$f" || {
-  printf '%s\n' "BLOCKED: stale-expectation fixture no longer matches LoginTest.java" >&2
+grep -Eq 'authorized-banner.*text\("' "$f" || {
+  printf '%s\n' "BLOCKED: no text() assertion on authorized-banner in LoginTest.java" >&2
   exit 69
 }
-sed 's/hello my friend, user1!/Welcome, user1!/' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+sed '/authorized-banner/ s/text("[^"]*")/text("Welcome, user1!")/' "$f" > "$f.tmp" && mv "$f.tmp" "$f"

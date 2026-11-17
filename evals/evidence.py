@@ -110,7 +110,7 @@ def extract(out):
     (out / "report.txt").write_text(report, encoding="utf-8")
 
 
-def check_source(expected, actual, test):
+def check_source(expected, actual, test, sut=None):
     def files(root):
         paths = {}
         for path in root.rglob("*"):
@@ -127,7 +127,19 @@ def check_source(expected, actual, test):
     tokens = r'"(?:\\.|[^"\\])*"|[A-Za-z_$][\w$]*|\d+|[^\s]'
     for path in before:
         if path == test:
-            if re.findall(tokens, before[path].decode()) != re.findall(tokens, after[path].decode()):
+            want = before[path].decode()
+            if sut is not None:
+                # The SUT is the contract: derive the expected literal from
+                # login.html and the login used by the test, not from the
+                # committed source, which may legitimately be stale.
+                welcome = re.search(r"en:\s*\{\s*welcome:\s*'([^']*)'", sut.read_text(encoding="utf-8"))
+                login = re.search(r'login-input[^;]*?setValue\("([^"]*)"\)', want)
+                literal = r'text\("(?:\\.|[^"\\])*"\)'
+                if not welcome or not login or len(re.findall(literal, want)) != 1:
+                    raise ValueError("cannot derive expected literal from SUT and test")
+                expected_literal = re.sub(r"\{[A-Za-z_]+\}", login.group(1), welcome.group(1))
+                want = re.sub(literal, lambda _: f'text("{expected_literal}")', want, count=1)
+            if re.findall(tokens, want) != re.findall(tokens, after[path].decode()):
                 raise ValueError("test is not the minimal stale-text correction")
         elif before[path] != after[path]:
             raise ValueError(f"unexpected source change: {path}")
@@ -166,15 +178,15 @@ def main():
         mode, *args = sys.argv[1:]
         if mode == "extract" and len(args) == 1:
             extract(Path(args[0]))
-        elif mode == "source" and len(args) == 3:
-            check_source(Path(args[0]), Path(args[1]), args[2])
+        elif mode == "source" and len(args) in (3, 4):
+            check_source(Path(args[0]), Path(args[1]), args[2], Path(args[3]) if len(args) == 4 else None)
         elif mode == "results" and len(args) == 2:
             check_results(Path(args[0]), Path(args[1]))
         elif mode == "verdict" and len(args) == 1:
             check_verdict(Path(args[0]))
         else:
             raise ValueError(
-                "usage: evidence.py extract OUT | source EXPECTED ACTUAL TEST | results ACTIONS XML | verdict JUDGE_MESSAGE"
+                "usage: evidence.py extract OUT | source EXPECTED ACTUAL TEST [SUT_HTML] | results ACTIONS XML | verdict JUDGE_MESSAGE"
             )
     except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as error:
         print(f"FAIL evidence: {error}", file=sys.stderr)
