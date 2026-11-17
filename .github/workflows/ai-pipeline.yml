@@ -75,6 +75,24 @@ jobs:
       - name: CLI preflight (java/javac 21, gradle 9.6.0, git)
         run: sh tools/versions.sh
 
+      # CI runners have no display, and the project has no headless config —
+      # headed Chrome dies with SessionNotCreatedException. A -D flag on the
+      # gradle CLI does NOT reach forked test JVMs, and codex tool-call env
+      # can't be relied on either. A Gradle init script in ~/.gradle is the one
+      # channel that reaches every test JVM: the warmup, tools/*.sh wrappers,
+      # the agent's runs inside `codex exec` (evals.sh mounts ~/.gradle via
+      # --add-dir) and the eval's independent verification build.
+      - name: Force headless browser for all Gradle test runs
+        run: |
+          mkdir -p "$HOME/.gradle/init.d"
+          cat > "$HOME/.gradle/init.d/selenide-headless.gradle" <<'EOF'
+          allprojects {
+              tasks.withType(Test).configureEach {
+                  systemProperty 'selenide.headless', 'true'
+              }
+          }
+          EOF
+
       # One online browser run warms BOTH caches at once:
       # - ~/.gradle gets the full test RUNTIME classpath — `gradle testClasses`
       #   alone only resolves the compile classpath, and tools/*.sh then run
