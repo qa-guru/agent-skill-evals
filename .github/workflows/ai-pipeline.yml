@@ -1,12 +1,21 @@
-name: agent-skill-evals
+name: ai-pipeline
 
-# Manual-only workflow: evals make PAID model calls (EVAL_AGENT=codex) and are
-# nondeterministic, so they must not gate PRs. To run on a schedule, uncomment
-# the block below — it is off by default on purpose.
+# Runs on every push to main (post-merge signal, deliberate spend: evals make
+# PAID model calls and are nondeterministic, so they still do not gate PRs)
+# and manually via workflow_dispatch. To run on a schedule, uncomment the
+# block below — it is off by default on purpose.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   # schedule:
   #   - cron: '23 4 * * *'   # nightly, UTC
+
+# Serialize runs per ref: a burst of merges queues instead of running paid
+# evals in parallel; every run is kept (evidence is never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

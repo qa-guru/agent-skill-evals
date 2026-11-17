@@ -22,11 +22,13 @@ sh tools/evals.sh --allow-agent all                   # paid model calls, codex 
 
 Details and the permission contract: [knowledge/testing/run-tests.md](knowledge/testing/run-tests.md).
 
-## CI — `.github/workflows/evals.yml`
+## CI — `.github/workflows/ai-pipeline.yml` (`ai-pipeline`)
 
-Manual only (`workflow_dispatch`): evals spend paid model tokens and are
-nondeterministic — no per-PR gating. A `schedule` block is present but
-commented out; uncomment deliberately.
+Runs on every push to `main` and manually via `workflow_dispatch`: evals
+spend paid model tokens and are nondeterministic, so the main-branch run is a
+post-merge signal, not a per-PR gate. Runs are serialized per ref via
+`concurrency` — a merge burst queues rather than overlapping paid runs. A
+`schedule` block is present but commented out; uncomment deliberately.
 
 Required configuration (Settings → Secrets and variables → Actions):
 
