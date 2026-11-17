@@ -1,7 +1,7 @@
 # Trusted shell fixture. FIX_TEST is checked against pre-setup source, then run
 # in a fresh build directory. BLOCKED is an incomplete outcome, not a fixed test.
 # setup seeds a stale expected text ("Welcome, user1!") into the copied test;
-# the SUT (login.html) renders "Hi friend, user1!" and is the contract.
+# the SUT (login.html) renders "New year, user1!" and is the contract.
 ID=fix-failing-stale-expectation
 GROUP=fix-failing-test
 TITLE="Stale expectation is fixed in the test, SUT untouched"
