@@ -8,7 +8,11 @@ Self-healing login-test pipeline for a QA demo project
 - `login.html` — the application under test; the `en` welcome message is the
   contract the login test asserts on
 - `src/test/java/tests/LoginTest.java` — the browser login test
-- `tools/` — POSIX entry points (`versions`, `compile-tests`, `run-tests`)
+- `tools/` — POSIX entry points (`versions`, `compile-tests`, `run-tests`,
+  `git`, `heal-agent` — the LLM healer loop)
+- `AGENTS.md`, `.agents/skills/`, `knowledge/` — the agent harness: operating
+  contract, skills (`run-tests`, `fix-failing-test`) and knowledge docs the
+  healing agent follows
 
 ## Local
 
@@ -29,12 +33,13 @@ caches and the Codex CLI are restored via `actions/cache`):
 1. **First pass** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
    runs the real browser login flow. A green run ends here: zero paid calls,
    nothing to heal.
-2. **Heal** (paid, only on red) — `tools/heal-test.py` sends `login.html`,
-   the test and the failure log to an OpenAI-compatible chat endpoint in a
-   single call and writes back a minimally corrected `LoginTest.java`. The
-   model reasons over the live contract, so renamed selectors, new
-   credentials, new copy or restructured markup are all in scope — no fixed
-   patterns. Env: `OPENAI_API_KEY` (repo secret), optional `HEAL_API_BASE`,
+2. **Heal** (paid, only on red) — `tools/heal-agent.py` runs the LLM as a
+   coding agent **inside the repo harness**: it reads `AGENTS.md`, loads the
+   `fix-failing-test` skill and the knowledge docs it references, reproduces
+   via `tools/run-tests.sh`, applies the minimal correction to
+   `LoginTest.java` and re-runs to verify — through `read_file`,
+   `write_file` and `run_command` tools on an OpenAI-compatible chat
+   endpoint. Env: `OPENAI_API_KEY` (repo secret), optional `HEAL_API_BASE`,
    `HEAL_MODEL` (default `gpt-4.1-mini`).
 3. **Verify** — the same browser test is re-run independently. Green → the
    healed file is committed back as `github-actions[bot]` with `[skip ci]`.

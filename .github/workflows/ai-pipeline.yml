@@ -2,7 +2,7 @@ name: ai-pipeline
 
 # Self-healing login-test pipeline driven by an LLM healer. On every push
 # to main the real browser login test runs first — a green run ends there
-# with zero paid calls. A red run calls tools/heal-test.py: one LLM request
+# with zero paid calls. A red run calls tools/heal-agent.py: one LLM request
 # sends the SUT contract (login.html) + the test + the failure log and gets
 # back a rewritten LoginTest.java. The same browser test is then re-run as
 # the authority — the model's word never counts; a second attempt feeds the
@@ -100,15 +100,15 @@ jobs:
             echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # The LLM is the healer — it reasons over the live SUT contract, so
-      # arbitrary SUT changes (renamed selectors, restructured JS, new
-      # credentials, new copy) are in scope, not a fixed list of patterns.
-      # One chat call returns the whole corrected LoginTest.java.
-      - name: LLM heals the test (paid)
+      # The LLM is the healer, running inside the repo harness: the agent
+      # loop gives it read_file/write_file/run_command, so it follows
+      # AGENTS.md, loads the fix-failing-test skill and knowledge docs,
+      # reproduces via tools/run-tests.sh and verifies — no fixed patterns.
+      - name: Agent heals the test (paid)
         if: steps.first.outputs.failed == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 tools/heal-test.py build/heal/first-pass.log
+        run: python3 tools/heal-agent.py build/heal/first-pass.log
 
       # Guards: only LoginTest.java may be touched, and the independent
       # rerun — not the model's word — decides green. A failed rerun feeds
@@ -130,7 +130,7 @@ jobs:
             fi
             if [ "$i" -lt 2 ]; then
               echo "::warning::heal attempt $i failed verification — retrying with feedback"
-              python3 tools/heal-test.py "build/heal/verify-$i.log"
+              python3 tools/heal-agent.py "build/heal/verify-$i.log"
             fi
           done
           if [ "${ok:-0}" != 1 ]; then
