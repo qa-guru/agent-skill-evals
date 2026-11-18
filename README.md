@@ -21,24 +21,25 @@ sh tools/run-tests.sh --allow-sut one login-success   # real browser run (author
 ## CI — `.github/workflows/ai-pipeline.yml` (`ai-pipeline`)
 
 Runs on every push to `main` and manually via `workflow_dispatch`; runs are
-serialized per ref via `concurrency`. A `schedule` block is present but
-commented out — uncomment deliberately.
+serialized per ref via `concurrency`.
 
-One job, one toolchain (Java + pinned Gradle 9.6.0; the distribution and the
-dependency/Selenium caches are restored via `actions/cache`):
+One job (Java + pinned Gradle 9.6.0; the Gradle dist, dependency/Selenium
+caches and the Codex CLI are restored via `actions/cache`):
 
-1. **Sync** — `tools/sync-test.sh` heals every contract point the SUT still
-   provides: `data-testid` selectors (resolved via `autocomplete`,
-   `type="submit"` and the `getElementById(...).textContent = ...welcome`
-   binding), the valid credentials, and the expected welcome text (the `en`
-   template rendered, whitespace normalized like DOM `getText`). A healed
-   `LoginTest.java` is committed back as `github-actions[bot]` with
-   `[skip ci]` — no second pipeline pass, the browser run below already
-   verifies the synced file.
-2. **Verify** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
-   runs the real browser login flow against the SUT; it also warms the Gradle
-   runtime classpath and `~/.cache/selenium` on a cold cache.
+1. **First pass** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
+   runs the real browser login flow. A green run ends here: zero paid calls,
+   nothing to heal.
+2. **Heal** (paid, only on red) — the Codex agent reads `login.html`, the
+   test and the failure log, and minimally rewrites **only**
+   `LoginTest.java` so it matches what the SUT now provides — renamed
+   selectors, new credentials, new copy, restructured markup. Because the
+   agent reasons over the live contract, it is not limited to a fixed list
+   of patterns. Requires the `OPENAI_API_KEY` (or `CODEX_ACCESS_TOKEN`)
+   repository secret.
+3. **Verify** — the same browser test is re-run independently. Green → the
+   healed file is committed back as `github-actions[bot]` with `[skip ci]`.
+   A guard fails the run if the agent touched anything outside
+   `LoginTest.java`, and a red rerun stays red — the SUT itself is broken.
 
-Edit `login.html`, push, and the run stays green while `LoginTest.java`
-catches up by itself. A failure after the sync means something the SUT no
-longer provides — an honest red, not a stale expectation.
+Edit `login.html`, push: green when the agent can honestly heal the test,
+red when the SUT no longer provides what the scenario needs.
