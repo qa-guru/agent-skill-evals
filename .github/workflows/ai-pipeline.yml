@@ -125,7 +125,10 @@ jobs:
               echo "::error::heal touched files outside LoginTest.java: $touched"
               exit 1
             fi
-            if gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee "build/heal/verify-$i.log"; then
+            # cleanTest forces re-execution: the agent already ran the test
+            # inside its own loop, leaving up-to-date results that gradle
+            # would otherwise skip — a verification that never runs.
+            if gradle cleanTest test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee "build/heal/verify-$i.log"; then
               ok=1; break
             fi
             if [ "$i" -lt 2 ]; then
