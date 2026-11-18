@@ -24,12 +24,12 @@
     </form>
     <p id="error-message" role="alert" data-testid="error-message"></p>
     <section id="success-panel" data-testid="success-panel" hidden>
-      <p id="welcome-message" data-testid="authorized-banner"></p>
+      <p id="welcome-message" data-testid="wellcome-banner"></p>
     </section>
     <script>
       const language = new URLSearchParams(location.search).has('ru') ? 'ru' : 'en';
       const messages = {
-        en: { welcome: 'Hello my lord, {login}!', error: 'Wrong login or password' },
+        en: { welcome: 'Hello, {login}!', error: 'Wrong login or password' },
         ru: { welcome: 'Привет, {login}!', error: 'Неверный логин или пароль' },
       };
       document.documentElement.lang = language;
