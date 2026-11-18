@@ -1,11 +1,12 @@
 name: ai-pipeline
 
-# Self-healing login-test pipeline. On every push to main it renders the
-# expected welcome text from the SUT contract (login.html), syncs the test's
-# expected literal to it, commits the change back as github-actions[bot]
+# Self-healing login-test pipeline. On every push to main it heals the
+# test's contract points from the SUT (login.html) — data-testid selectors,
+# valid credentials and the welcome literal, resolved through the SUT's own
+# semantic anchors — commits the change back as github-actions[bot]
 # ([skip ci] — the browser run below already verifies the synced file), and
-# runs the real login test as the SUT health check. A failed test after the
-# sync is real SUT breakage, so it fails the run — no warning path needed.
+# runs the real login test as the SUT health check. What the SUT no longer
+# provides fails the run — real breakage, not a stale expectation.
 on:
   push:
     branches: [main]
@@ -81,29 +82,20 @@ jobs:
       - name: CLI preflight (java/javac 21, gradle 9.6.0, git)
         run: sh tools/versions.sh
 
-      # The expected literal is derived from the SUT (the en welcome template
-      # rendered with the login the test uses) and normalized like DOM
-      # getText: whitespace collapsed and trimmed.
-      - name: Sync test expectation with the SUT contract
+      # tools/sync-test.sh rewrites every contract point the SUT still
+      # provides: data-testid selectors, valid credentials, welcome literal.
+      - name: Sync test contract with the SUT
         run: |
-          tmpl=$(sed -n "s/.*en: *{ *welcome: *'\([^']*\)'.*/\1/p" login.html | head -1)
-          login=$(sed -n '/login-input/ s/.*setValue("\([^"]*\)").*/\1/p' src/test/java/tests/LoginTest.java | head -1)
-          if [ -z "$tmpl" ] || [ -z "$login" ]; then
-            echo "::error::cannot derive expected text from login.html / LoginTest.java"
-            exit 1
-          fi
-          expected=$(printf '%s' "$tmpl" | sed "s/{[A-Za-z_][A-Za-z_]*}/$login/g" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
-          esc=$(printf '%s' "$expected" | sed 's/[\\&/]/\\&/g')
-          sed -i "/authorized-banner/ s/text(\"[^\"]*\")/text(\"$esc\")/" src/test/java/tests/LoginTest.java
+          sh tools/sync-test.sh
           if git diff --quiet -- src/test/java/tests/LoginTest.java; then
-            echo "test already matches SUT: \"$expected\""
+            echo "test already matches the SUT contract"
             exit 0
           fi
-          echo "synced expectation to: \"$expected\""
+          git diff -- src/test/java/tests/LoginTest.java
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/test/java/tests/LoginTest.java
-          git commit -m "Sync login test expectation with SUT [skip ci]"
+          git commit -m "Sync login test with SUT [skip ci]"
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
