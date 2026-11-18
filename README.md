@@ -27,15 +27,18 @@ commented out — uncomment deliberately.
 One job, one toolchain (Java + pinned Gradle 9.6.0; the distribution and the
 dependency/Selenium caches are restored via `actions/cache`):
 
-1. **Sync** — renders the expected welcome text from `login.html` (the `en`
-   template with the test's login, whitespace normalized like DOM `getText`),
-   writes it into `LoginTest.java`, and commits the change back as
-   `github-actions[bot]` with `[skip ci]` — no second pipeline pass, the
-   browser run below already verifies the synced file.
+1. **Sync** — `tools/sync-test.sh` heals every contract point the SUT still
+   provides: `data-testid` selectors (resolved via `autocomplete`,
+   `type="submit"` and the `getElementById(...).textContent = ...welcome`
+   binding), the valid credentials, and the expected welcome text (the `en`
+   template rendered, whitespace normalized like DOM `getText`). A healed
+   `LoginTest.java` is committed back as `github-actions[bot]` with
+   `[skip ci]` — no second pipeline pass, the browser run below already
+   verifies the synced file.
 2. **Verify** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
    runs the real browser login flow against the SUT; it also warms the Gradle
    runtime classpath and `~/.cache/selenium` on a cold cache.
 
 Edit `login.html`, push, and the run stays green while `LoginTest.java`
-catches up by itself. A failure after the sync means the login flow itself is
-broken — that is an honest red, not a stale expectation.
+catches up by itself. A failure after the sync means something the SUT no
+longer provides — an honest red, not a stale expectation.
