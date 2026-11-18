@@ -1,0 +1,8 @@
+/bin/zsh -lc 'cat .agents/skills/fix-failing-test/SKILL.md knowledge/testing/run-tests.md knowledge/architecture/overview.md knowledge/testing/debugging.md knowledge/testing/assertions.md'
+/bin/zsh -lc \
+/bin/zsh -lc 'sh tools/versions.sh; cat login.html; command -v gradle; rg --files build . | head -60'
+/bin/zsh -lc 'sh tools/versions.sh'
+/bin/zsh -lc 'sh tools/compile-tests.sh'
+/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut one login-success'
+/bin/zsh -lc 'git --version'
+/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut one login-success'

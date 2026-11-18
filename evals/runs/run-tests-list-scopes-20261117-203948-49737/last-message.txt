@@ -1,0 +1,16 @@
+The project has **one test case and one group**:
+
+- **`login-success`** — successful login; submits credentials to local `login.html` and checks the greeting. Maps to `tests.LoginTest.successfulLoginTest`.
+- **`login` group** — selects `tests.LoginTest`, currently containing that single case.
+
+Commands for future execution:
+
+```sh
+sh tools/run-tests.sh --allow-sut one login-success
+sh tools/run-tests.sh --allow-sut group login
+sh tools/run-tests.sh --allow-sut all
+```
+
+All three currently select the same test. No JUnit tags or additional groups are configured.
+
+**No tests were run.** `sh tools/run-tests.sh list` exited **0**. Tool versions were not checked. The read-only Git status check exited **128** because this snapshot has no Git repository.

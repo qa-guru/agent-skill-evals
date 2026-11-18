@@ -1,0 +1,16 @@
+There is **1 test case and 1 script-defined group**:
+
+- **`login-success`** — `tests.LoginTest.successfulLoginTest`. Opens local `login.html`, logs in as `user1`, and checks that the authorized banner contains `Hello, user1!`.
+- **`login`** — selects the `tests.LoginTest` class, currently containing that single case.
+
+Available commands for future execution:
+
+```sh
+sh tools/run-tests.sh --allow-sut one login-success
+sh tools/run-tests.sh --allow-sut group login
+sh tools/run-tests.sh --allow-sut all
+```
+
+No JUnit tags or categories are configured. The documentation describes an external SUT, but the current test source uses a local HTML file.
+
+Only `sh tools/run-tests.sh list` was executed (exit **0**). **No tests were run.**

@@ -1,0 +1,1 @@
+The login test fails. Investigate the cause and fix it so the test matches the application. You are authorized to run the login scope via 'sh tools/run-tests.sh --allow-sut one login-success'. Do not modify the application under test.

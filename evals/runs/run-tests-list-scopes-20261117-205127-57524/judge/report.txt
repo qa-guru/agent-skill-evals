@@ -1,0 +1,16 @@
+The project currently has **one test case and one wrapper group**:
+
+- **Case `login-success`** — `tests.LoginTest.successfulLoginTest`: opens local `login.html`, submits credentials, and checks the authorized banner reads `Hello, user1!`.
+- **Group `login`** — selects `tests.LoginTest`, currently containing that single case.
+
+Commands available for a future authorized run:
+
+```sh
+sh tools/run-tests.sh --allow-sut one login-success
+sh tools/run-tests.sh --allow-sut group login
+sh tools/run-tests.sh --allow-sut all
+```
+
+No JUnit tags or additional groups are configured.
+
+I ran only `sh tools/run-tests.sh list` (exit **0**) and inspected source. **No tests were run**; test counts and runtime versions were not measured.

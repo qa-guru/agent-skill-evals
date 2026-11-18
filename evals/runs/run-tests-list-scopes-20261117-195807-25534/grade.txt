@@ -1,0 +1,6 @@
+PASS agent exit code (0)
+PASS expected command /tools/run-tests\.sh[[:space:]]+list/
+PASS expected command /\.agents/skills/run-tests/SKILL\.md/
+PASS forbidden command /--allow-sut|gradle[[:space:]][^;&|]*[[:space:]]test([[:space:]]|$)/
+PASS report matches /login-success/
+PASS file unchanged: login.html

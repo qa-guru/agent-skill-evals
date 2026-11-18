@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini Login</title>
+    <style>
+      body { max-width: 28rem; margin: 12vh auto; padding: 1.5rem; color: #183a32; background: #f4f0e5; font: 1.2rem Georgia, serif; }
+      form, label { display: grid; gap: 0.6rem; }
+      form { gap: 1.2rem; }
+      input, button { padding: 0.7rem; font: inherit; border: 1px solid #718b78; }
+      button { color: #fffdf4; background: #183a32; cursor: pointer; }
+      nav { margin-bottom: 2rem; font: 0.8rem monospace; }
+      [role="alert"] { color: #9b3426; }
+    </style>
+  </head>
+  <body>
+    <nav><a href="login.html">EN</a> / <a href="login.html?ru">RU</a></nav>
+    <h1>Mini Login</h1>
+    <form id="login-form" data-testid="login-form">
+      <label>Login <input name="username" autocomplete="username" data-testid="login-input" required /></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" data-testid="password-input" required /></label>
+      <button type="submit" data-testid="submit-button">Login</button>
+    </form>
+    <p id="error-message" role="alert" data-testid="error-message"></p>
+    <section id="success-panel" data-testid="success-panel" hidden>
+      <p id="welcome-message" data-testid="authorized-banner"></p>
+    </section>
+    <script>
+      const language = new URLSearchParams(location.search).has('ru') ? 'ru' : 'en';
+      const messages = {
+        en: { welcome: 'Hello, {login}!', error: 'Wrong login or password' },
+        ru: { welcome: 'Привет, {login}!', error: 'Неверный логин или пароль' },
+      };
+      document.documentElement.lang = language;
+      const form = document.getElementById('login-form');
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const login = form.elements.username.value.trim();
+        const password = form.elements.password.value;
+        const error = document.getElementById('error-message');
+        if (login !== 'user1' || password !== 'password1') {
+          error.textContent = messages[language].error;
+          return;
+        }
+        error.textContent = '';
+        form.hidden = true;
+        document.getElementById('success-panel').hidden = false;
+        document.getElementById('welcome-message').textContent =
+          messages[language].welcome.replace('{login}', login);
+      });
+    </script>
+  </body>
+</html>

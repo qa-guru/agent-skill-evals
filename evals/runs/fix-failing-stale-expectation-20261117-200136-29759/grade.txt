@@ -1,0 +1,9 @@
+PASS agent exit code (0)
+PASS expected command /tools/run-tests\.sh/
+PASS expected command /\.agents/skills/fix-failing-test/SKILL\.md/
+PASS forbidden command /Thread\.sleep/
+PASS report matches /test defect|stale|expectation|PASS|FAIL|BLOCKED/
+PASS content in src/test/java/tests/LoginTest.java /Hello,[[:space:]]user1!/
+PASS forbidden content in src/test/java/tests/LoginTest.java /Thread\.sleep/
+PASS file unchanged: login.html
+PASS file unchanged: build.gradle

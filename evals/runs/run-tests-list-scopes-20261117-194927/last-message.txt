@@ -1,0 +1,21 @@
+The project currently contains **one test case and one script-defined group**:
+
+- **`login-success`** — `tests.LoginTest.successfulLoginTest`: opens local `login.html`, submits credentials, and checks that the authorized banner contains `Hello, user1!`.
+- **`login` group** — selects `tests.LoginTest`, currently containing that single case.
+- **`all`** — runs the entire suite, currently the same single test.
+
+Available commands:
+
+```sh
+# List scopes without running tests
+sh tools/run-tests.sh list
+
+# Execute scopes when authorized
+sh tools/run-tests.sh --allow-sut one login-success
+sh tools/run-tests.sh --allow-sut group login
+sh tools/run-tests.sh --allow-sut all
+```
+
+There are no configured JUnit tags or categories. The script still requires `--allow-sut`, although current source uses a local HTML file; the documentation’s external URL example is outdated.
+
+No tests or compilation were run.

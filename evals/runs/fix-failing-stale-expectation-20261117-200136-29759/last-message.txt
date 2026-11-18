@@ -1,0 +1,10 @@
+Fixed the stale expectation in `src/test/java/tests/LoginTest.java:18`: changed “Welcome, user1!” to the observed “Hello, user1!”. The application is unchanged; its SHA-256 matches before and after.
+
+Verification: `sh tools/run-tests.sh --allow-sut one login-success`
+
+- Before: exit 1; executed 1, passed 0, failed 1, skipped 0.
+- After: exit 0; executed 1, passed 1, failed 0, skipped 0.
+- Compilation: `sh tools/compile-tests.sh`, exit 0.
+- Versions: Java/javac 21.0.9, Gradle 9.6.0, Git 2.51.2.
+
+Original failure evidence is preserved in `build/evidence/login-before-fix/`. Verification used the test’s configured local `login.html`.

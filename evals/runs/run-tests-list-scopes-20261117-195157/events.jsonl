@@ -1,0 +1,2 @@
+{"type":"item.completed","item":{"type":"command_execution","command":"/bin/zsh -lc 'sh tools/run-tests.sh list'","exit_code":0}}
+{"type":"item.completed","item":{"type":"agent_message","text":"login-success is the only case."}}

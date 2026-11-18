@@ -1,0 +1,14 @@
+**BLOCKED — browser/SUT execution awaits your approval.**
+
+- `sh tools/run-tests.sh list` — exit **0**. Scope: `login-success [login] Successful login`.
+- `sh tools/versions.sh` — exit **0**. Java/javac **21.0.9**, Gradle **9.6.0**, Git **2.51.2**; CLI requirements satisfied.
+- `sh tools/compile-tests.sh` — exit **0**. Offline compilation succeeded; this is not a test pass.
+- `sh tools/git.sh status` — exit **128**: workspace is not a Git repository.
+
+**Tests:** 0 executed, 0 passed, 0 failed, 0 skipped. No fresh test results generated. Browser/driver readiness remains unverified.
+
+Required authorization: approve the single `login-success` browser scenario against local `login.html`, using:
+```sh
+sh tools/run-tests.sh --allow-sut one login-success
+```
+This approval gate follows your explicit instruction and the project’s execution contract. No browser or SUT execution was started.

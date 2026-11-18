@@ -2,14 +2,5 @@
 .gradle/
 build/
 
-# Python
-__pycache__/
-*.py[cod]
-
 # macOS
 .DS_Store
-
-# Eval run evidence: transcripts and artifacts are retained locally and as CI
-# workflow artifacts, not committed as source. Keep the directory itself.
-evals/runs/*
-!evals/runs/.gitkeep

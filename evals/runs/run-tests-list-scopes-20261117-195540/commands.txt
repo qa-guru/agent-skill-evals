@@ -1,0 +1,2 @@
+/bin/zsh -lc 'cat .agents/skills/run-tests/SKILL.md'
+/bin/zsh -lc 'sh tools/run-tests.sh list'

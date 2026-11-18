@@ -1,0 +1,16 @@
+The project has **one test case and one script-defined group**:
+
+- **Case `login-success`** → `tests.LoginTest.successfulLoginTest`: opens local `login.html`, submits login credentials, and checks the authorized banner says `Hello, user1!`.
+- **Group `login`** → all tests in `tests.LoginTest`, currently that single case.
+
+Available commands for future execution:
+```sh
+sh tools/run-tests.sh --allow-sut one login-success
+sh tools/run-tests.sh --allow-sut group login
+sh tools/run-tests.sh --allow-sut all
+```
+
+No JUnit tags or additional groups are configured. The documentation describes an external URL, but current source uses a local HTML file.
+
+**No tests were run.** `sh tools/run-tests.sh list` exited **0**. Runtime versions and test counts were not measured. Git status inspection failed with exit **128** because this directory is not a Git repository.I’ll read the test-scope documentation and source using the run-tests skill, without executing tests.
+The project has **one test case and one script-defined group**:\n\n- **Case `login-success`** → `tests.LoginTest.successfulLoginTest`: opens local `login.html`, submits login credentials, and checks the authorized banner says `Hello, user1!`.\n- **Group `login`** → all tests in `tests.LoginTest`, currently that single case.\n\nAvailable commands for future execution:\n```sh\nsh tools/run-tests.sh --allow-sut one login-success\nsh tools/run-tests.sh --allow-sut group login\nsh tools/run-tests.sh --allow-sut all\n```\n\nNo JUnit tags or additional groups are configured. The documentation describes an external URL, but current source uses a local HTML file.\n\n**No tests were run.** `sh tools/run-tests.sh list` exited **0**. Runtime versions and test counts were not measured. Git status inspection failed with exit **128** because this directory is not a Git repository.

@@ -1,0 +1,18 @@
+/bin/zsh -lc 'cat .agents/skills/fix-failing-test/SKILL.md knowledge/testing/run-tests.md knowledge/architecture/overview.md knowledge/testing/debugging.md'
+/bin/zsh -lc "rg -n 'login|selenide' /Users/stanislav/.codex/memories/MEMORY.md"
+/bin/zsh -lc 'sh tools/git.sh status'
+/bin/zsh -lc 'cat src/test/java/tests/LoginTest.java login.html build.gradle tools/run-tests.sh tools/compile-tests.sh tools/versions.sh knowledge/stack/versions.md knowledge/testing/assertions.md'
+/bin/zsh -lc 'sh tools/versions.sh'
+/bin/zsh -lc 'rg --files build /Users/stanislav/.cache/selenium | head -50'
+/bin/zsh -lc 'sh tools/compile-tests.sh'
+/bin/zsh -lc "'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --version"
+/bin/zsh -lc 'SE_OFFLINE=true SE_AVOID_STATS=true sh tools/run-tests.sh --allow-sut one login-success'
+/bin/zsh -lc 'cat build/test-results/test/TEST-tests.LoginTest.xml'
+/bin/zsh -lc 'mkdir -p evidence/login-before-fix
+cp -R build/test-results build/reports evidence/login-before-fix/
+cp src/test/java/tests/LoginTest.java evidence/login-before-fix/LoginTest.java
+shasum -a 256 login.html > evidence/login-before-fix/sut.sha256'
+/bin/zsh -lc 'SE_OFFLINE=true SE_AVOID_STATS=true sh tools/run-tests.sh --allow-sut one login-success'
+/bin/zsh -lc 'cat build/test-results/test/TEST-tests.LoginTest.xml
+shasum -a 256 -c evidence/login-before-fix/sut.sha256
+ diff -u evidence/login-before-fix/LoginTest.java src/test/java/tests/LoginTest.java'

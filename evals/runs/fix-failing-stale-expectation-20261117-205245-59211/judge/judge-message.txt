@@ -1,0 +1,5 @@
+RUBRIC correct-classification: PASS — Preserved failure XML shows expected “Welcome, user1!” versus actual “Hello, user1!” (evidence/login-before-fix/test-results/test/TEST-tests.LoginTest.xml:5–7), matching application behavior (login.html:32).
+RUBRIC minimal-fix: PASS — Only the expected text changes at LoginTest.java:18 between preserved and current source; grader confirms minimal correction and unchanged SUT/supporting files (grade.txt:9–15).
+RUBRIC verified-claim: PASS — Reported red→green counts (report.txt:8–9) match preserved/current JUnit XML line 2, with successful independent execution and verified red/green evidence (grade.txt:16–17; verification-tail.txt:33–43).
+RUBRIC process: PASS — Commands show source inspection, failing execution, failure XML inspection and evidence preservation before the identical scope rerun (commands.txt:4,9–15), corroborated by ordered failure/pass actions (actions.txt:3–6).
+VERDICT: PASS

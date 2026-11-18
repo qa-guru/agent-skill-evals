@@ -1,0 +1,2 @@
+/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut all'
+/bin/zsh -lc 'gradle --offline test'

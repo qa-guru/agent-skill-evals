@@ -1,0 +1,10 @@
+Fixed the stale expectation in `src/test/java/tests/LoginTest.java:18`: `Welcome, user1!` → `Hello, user1!`, matching both application source and observed browser output. The single retrying assertion remains intact; the application is unchanged.
+
+Verification command: `sh tools/run-tests.sh --allow-sut one login-success`
+
+- Before: exit 1; 1 executed, 0 passed, 1 failed, 0 skipped.
+- After: exit 0; 1 executed, 1 passed, 0 failed, 0 skipped.
+- `sh tools/compile-tests.sh`: exit 0; no tests executed.
+- Versions: Java/javac 21.0.9, Gradle 9.6.0, Git 2.51.2.
+
+Failure evidence retained in `build/evidence/login-before-fix/`. Git inspection was unavailable because the snapshot lacks repository metadata.

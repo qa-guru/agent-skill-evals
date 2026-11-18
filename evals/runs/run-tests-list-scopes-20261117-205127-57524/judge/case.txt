@@ -1,0 +1,3 @@
+Case: run-tests-list-scopes — Scope discovery via the tools entry point, no execution
+Prompt given to the agent:
+What test cases and groups can I run in this project? Do not run any tests.

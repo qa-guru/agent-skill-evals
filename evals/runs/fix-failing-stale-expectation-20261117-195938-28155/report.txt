@@ -1,0 +1,12 @@
+Updated [LoginTest.java](src/test/java/tests/LoginTest.java:18) to expect `Hello, user1!`, matching the application’s English success message. Preserved the locator and single retrying assertion. The application was not modified.
+
+**Verification: BLOCKED** by `java.net.SocketException: Operation not permitted` during Gradle startup.
+
+- `sh tools/versions.sh` — exit 0. Java/javac 21.0.9, Gradle 9.6.0, Git 2.51.2.
+- `sh tools/compile-tests.sh` — exit 1.
+- `sh tools/run-tests.sh --allow-sut one login-success` — exit 1 before and after the fix.
+- Tests: 0 executed, 0 passed, 0 failed, 0 skipped.
+
+The mismatch is confirmed by source inspection; browser verification requires an environment that permits Gradle’s local socket operation.I’ll use the fix-failing-test skill to inspect the login scenario, run the authorized scope, and fix any proven mismatch with the application.
+The test expects “Welcome, user1!”, but the local application’s English success message is “Hello, user1!”. The locator matches. I’ll update only that expected text.\n\nRuntime verification is blocked so far: Gradle cannot create its file-lock service because the sandbox denies a socket operation. This snapshot also has no Git repository, so Git status is unavailable.
+Updated [LoginTest.java](src/test/java/tests/LoginTest.java:18) to expect `Hello, user1!`, matching the application’s English success message. Preserved the locator and single retrying assertion. The application was not modified.\n\n**Verification: BLOCKED** by `java.net.SocketException: Operation not permitted` during Gradle startup.\n\n- `sh tools/versions.sh` — exit 0. Java/javac 21.0.9, Gradle 9.6.0, Git 2.51.2.\n- `sh tools/compile-tests.sh` — exit 1.\n- `sh tools/run-tests.sh --allow-sut one login-success` — exit 1 before and after the fix.\n- Tests: 0 executed, 0 passed, 0 failed, 0 skipped.\n\nThe mismatch is confirmed by source inspection; browser verification requires an environment that permits Gradle’s local socket operation.

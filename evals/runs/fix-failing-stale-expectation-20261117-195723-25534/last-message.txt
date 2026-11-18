@@ -1,0 +1,13 @@
+Updated the login assertion from `Welcome, user1!` to `Hello, user1!`, matching the current `login.html` source. Preserved the locator and single retrying assertion. The application was not modified.
+
+**Verification: BLOCKED.** Gradle cannot load `libnative-platform.dylib`; browser behavior remains unverified.
+
+Commands and exit codes:
+
+- `sh tools/versions.sh` — 1
+- `sh tools/compile-tests.sh` — 1
+- `sh tools/run-tests.sh --allow-sut one login-success` — 1, before and after the fix
+
+Executed/passed/failed/skipped: **0/0/0/0**.
+
+Detected Java/javac **21.0.9**, Git **2.51.2**; Gradle version verification failed. A working Gradle native runtime is required to verify the fix. No infrastructure repair was attempted.

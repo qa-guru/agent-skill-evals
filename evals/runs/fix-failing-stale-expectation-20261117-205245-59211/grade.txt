@@ -1,0 +1,18 @@
+PASS agent exit code (0)
+PASS complete, parseable agent evidence
+PASS expected action: versions
+PASS expected action: compile
+PASS expected action: login-failure
+PASS expected action: login-pass
+PASS report matches /test[[:space:]]defect|stale|expectation/
+PASS report matches /PASS|[Pp]assed/
+PASS unchanged: AGENTS.md
+PASS unchanged: login.html
+PASS unchanged: build.gradle
+PASS unchanged: .agents
+PASS unchanged: knowledge
+PASS unchanged: tools
+PASS minimal test correction, no added/deleted source
+PASS independent browser run exit code
+PASS red/green evidence and fresh JUnit counts: 1/1/0/0
+PASS llm-judge verdict (judge/judge-message.txt)
