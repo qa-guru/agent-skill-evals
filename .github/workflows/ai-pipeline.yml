@@ -87,8 +87,11 @@ jobs:
       # paid heal path below and the log becomes the agent's evidence. The
       # exit code is captured into an output — NEVER continue-on-error:
       # that flag would mark the step successful while the test is red.
+      # shell: bash is required — the default `bash -e` lacks pipefail and
+      # tee would swallow gradle's exit code (green over a red test).
       - name: Login test — first pass
         id: first
+        shell: bash
         run: |
           mkdir -p build/heal
           if gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee build/heal/first-pass.log; then
@@ -160,6 +163,7 @@ jobs:
 
       - name: Guard + independent verification + commit healed test
         if: steps.first.outputs.failed == 'true'
+        shell: bash  # pipefail: a red rerun must fail the step, not tee's 0
         run: |
           touched=$(git status --porcelain | awk '{print $2}' | grep -vx 'src/test/java/tests/LoginTest.java' || true)
           if [ -n "$touched" ]; then
