@@ -2,9 +2,10 @@ name: ai-pipeline
 
 # Self-healing login-test pipeline driven by an LLM healer. On every push
 # to main the real browser login test runs first — a green run ends there
-# with zero paid calls. A red run calls tools/heal-agent.py: one LLM request
-# sends the SUT contract (login.html) + the test + the failure log and gets
-# back a rewritten LoginTest.java. The same browser test is then re-run as
+# with zero paid calls. A red run calls tools/heal-agent.py: an LLM agent
+# loop inside the repo harness (AGENTS.md, skills, knowledge, tools/*.sh)
+# that reads the SUT contract + the failure log and rewrites ONLY
+# LoginTest.java. The same browser test is then re-run as
 # the authority — the model's word never counts; a second attempt feeds the
 # new failure log back. A healed file is committed back as
 # github-actions[bot] with [skip ci]. If no honest test can pass because
@@ -67,7 +68,8 @@ jobs:
 
       # CI runners have no display, and a -D flag on the gradle CLI does not
       # reach forked test JVMs — the init script is the one channel that
-      # reaches every test JVM on this runner (including inside codex exec).
+      # reaches every test JVM on this runner (including the agent's own
+      # gradle runs inside its tool loop).
       - name: Force headless browser for all Gradle test runs
         run: |
           mkdir -p "$HOME/.gradle/init.d"

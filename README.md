@@ -27,8 +27,8 @@ sh tools/run-tests.sh --allow-sut one login-success   # real browser run (author
 Runs on every push to `main` and manually via `workflow_dispatch`; runs are
 serialized per ref via `concurrency`.
 
-One job (Java + pinned Gradle 9.6.0; the Gradle dist, dependency/Selenium
-caches and the Codex CLI are restored via `actions/cache`):
+One job (Java + pinned Gradle 9.6.0 for the browser test; python3 for the
+LLM heal call — both already on the runner; caches via `actions/cache`):
 
 1. **First pass** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
    runs the real browser login flow. A green run ends here: zero paid calls,

@@ -137,8 +137,9 @@ Your operating contract is AGENTS.md:
 {(ROOT / 'AGENTS.md').read_text(encoding='utf-8')}
 </AGENTS.md>
 
-The browser test tests.LoginTest.successfulLoginTest just failed. Work the
-fix-failing-test skill end to end, using the tools provided:
+The browser test tests.LoginTest.successfulLoginTest just failed. Start by
+reading .agents/skills/fix-failing-test/SKILL.md and follow it end to end,
+using the tools provided:
 - read_file — the skill doc, the knowledge pages it references, login.html,
   the failing test, {fail_log}
 - run_command — tools/*.sh wrappers and gradle test runs

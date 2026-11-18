@@ -21,5 +21,4 @@ Make a minimal test-code fix only after evidence establishes test ownership and 
 Do not weaken assertions, add arbitrary sleeps, delete evidence, alter production logic or clean server accounts as a shortcut.
 Re-run the same smallest scope after a fix and report what was actually executed.
 
-Do not introduce a failure yourself for a demonstration. The explicitly selected stale-expectation eval seeds a known defect only in its copied workspace.
-Outside that fixture, if no failure exists, describe the diagnostic route as unexecuted.
+Do not introduce a failure yourself for a demonstration. If no failure exists, describe the diagnostic route as unexecuted.
