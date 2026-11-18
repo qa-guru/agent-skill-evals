@@ -23,18 +23,20 @@ permissions:
 env:
   EVAL_AGENT: codex
 
-# Stage chain: preflight warms the shared caches, tests verifies everything
-# free and offline, then each paid eval group is its own explicit stage —
-# evals runs the run-tests cases, fix-tests runs the fix-failing-test case
-# (agent fix plus an independent browser verification) — and judge (opt-in)
-# re-runs every case under an LLM rubric. A failed stage stops the chain so
-# broken builds never burn eval tokens; a new eval group needs a new stage.
+# Two stages on the free/paid boundary:
+# - verify warms the shared caches and runs every free check fully offline;
+# - evals logs Codex in once, runs the run-tests cases, then the
+#   fix-failing-test case (agent fix + independent browser verification),
+#   and commits the verified fix back to main. LLM_JUDGE=1 (repo variable)
+#   adds a judged re-run of every case — a second full paid pass, opt-in.
+# A failed step stops the stage so broken builds never burn eval tokens.
 # Exception: a FAILED login TEST warns and continues — SUT/test mismatch is
 # a valid signal this pipeline exists to measure; only a run that never
 # executes (no JUnit XML) is an infra failure worth stopping for.
-# Toolchain setup is identical in every stage via .github/actions/eval-env.
+# Toolchain setup is identical in both stages via .github/actions/eval-env.
 jobs:
-  preflight:
+  verify:
+    name: verify (free)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -70,25 +72,11 @@ jobs:
             exit 1
           fi
 
-  tests:
-    name: tests (free)
-    needs: preflight
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Toolchain + caches
-        uses: ./.github/actions/eval-env
-        with:
-          save-cache: 'false'
-
-      # Proves the sanctioned wrappers now work fully offline on warm caches.
       - name: Offline compile check
         run: sh tools/compile-tests.sh
 
-      # Same contract as the preflight warmup: a failed test warns and the
-      # chain continues; a run that never executes is an infra failure.
+      # Same contract as the warmup: a failed test warns and the chain
+      # continues; a run that never executes is an infra failure.
       - name: Offline wrapper check — login-success
         run: |
           if sh tools/run-tests.sh --allow-sut one login-success; then
@@ -107,54 +95,8 @@ jobs:
         run: sh tools/evals.sh list
 
   evals:
-    name: 'evals: run-tests (paid)'
-    needs: tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Toolchain + caches + Codex CLI
-        uses: ./.github/actions/eval-env
-        with:
-          save-cache: 'false'
-          codex: 'true'
-
-      - name: Codex login (repo secret required)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
-        run: |
-          if [ -n "${OPENAI_API_KEY:-}" ]; then
-            printenv OPENAI_API_KEY | codex login --with-api-key
-          elif [ -n "${CODEX_ACCESS_TOKEN:-}" ]; then
-            printenv CODEX_ACCESS_TOKEN | codex login --with-access-token
-          else
-            echo "::error::No Codex credential. Add repository secret OPENAI_API_KEY (or CODEX_ACCESS_TOKEN) under Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-          codex login status
-
-      - name: Run run-tests cases (paid model calls)
-        run: sh tools/evals.sh --allow-agent group run-tests
-
-      # Run transcripts are evidence: upload on every outcome, never clean.
-      - name: Upload eval evidence (evals/runs/)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: evals-runs-run-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evals/runs/
-          if-no-files-found: warn
-          retention-days: 30
-
-  # The fix-failing-test group is a separate paid stage so the agent-fix
-  # scenario stays explicit in the pipeline graph: the agent repairs a seeded
-  # stale expectation, then the harness re-verifies it with an independent
-  # offline browser run in a fresh build directory.
-  fix-tests:
-    name: 'evals: fix-failing-test (paid)'
-    needs: evals
+    name: evals (paid)
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write  # commits the eval-verified test fix back to main
@@ -181,7 +123,9 @@ jobs:
             echo "::error::No Codex credential. Add repository secret OPENAI_API_KEY (or CODEX_ACCESS_TOKEN) under Settings > Secrets and variables > Actions."
             exit 1
           fi
-          codex login status
+
+      - name: Run run-tests cases (paid model calls)
+        run: sh tools/evals.sh --allow-agent group run-tests
 
       - name: Run fix-failing-test cases (paid model calls)
         run: sh tools/evals.sh --allow-agent group fix-failing-test
@@ -214,63 +158,22 @@ jobs:
           git rebase origin/main
           git push origin HEAD:main
 
+      # Opt-in paid pass: LLM_JUDGE is only honored while a case executes, so
+      # a judged evaluation re-runs the agent for every case — a second full
+      # set of agent calls plus one judge call per case. Enable by setting
+      # the repository VARIABLE LLM_JUDGE=1.
+      - name: LLM-judged eval pass (re-runs all cases)
+        if: vars.LLM_JUDGE == '1'
+        env:
+          LLM_JUDGE: '1'
+        run: sh tools/evals.sh --allow-agent all
+
       # Run transcripts are evidence: upload on every outcome, never clean.
       - name: Upload eval evidence (evals/runs/)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fix-tests-runs-run-${{ github.run_id }}-${{ github.run_attempt }}
-          path: evals/runs/
-          if-no-files-found: warn
-          retention-days: 30
-
-  # Opt-in paid pass: LLM_JUDGE is only honored while a case is executing,
-  # so a judged evaluation re-runs the agent for every case — that is a
-  # second full set of agent calls plus one judge call per case. Enable by
-  # setting the repository VARIABLE LLM_JUDGE=1 (Settings > Secrets and
-  # variables > Actions > Variables). Kept as a separate gated stage so the
-  # default run stays cheaper and deterministic-only.
-  judge:
-    name: judge (paid, opt-in)
-    needs: fix-tests
-    if: vars.LLM_JUDGE == '1'
-    runs-on: ubuntu-latest
-    env:
-      LLM_JUDGE: '1'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Toolchain + caches + Codex CLI
-        uses: ./.github/actions/eval-env
-        with:
-          save-cache: 'false'
-          codex: 'true'
-
-      - name: Codex login (repo secret required)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
-        run: |
-          if [ -n "${OPENAI_API_KEY:-}" ]; then
-            printenv OPENAI_API_KEY | codex login --with-api-key
-          elif [ -n "${CODEX_ACCESS_TOKEN:-}" ]; then
-            printenv CODEX_ACCESS_TOKEN | codex login --with-access-token
-          else
-            echo "::error::No Codex credential. Add repository secret OPENAI_API_KEY (or CODEX_ACCESS_TOKEN) under Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-          codex login status
-
-      - name: LLM-judged eval pass (re-runs all cases)
-        run: sh tools/evals.sh --allow-agent all
-
-      # Run transcripts are evidence: upload on every outcome, never clean.
-      - name: Upload judge evidence (evals/runs/)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: judge-runs-run-${{ github.run_id }}-${{ github.run_attempt }}
+          name: evals-runs-run-${{ github.run_id }}-${{ github.run_attempt }}
           path: evals/runs/
           if-no-files-found: warn
           retention-days: 30

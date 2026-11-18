@@ -6,13 +6,13 @@ description: >-
 inputs:
   save-cache:
     description: >-
-      'true' restores the caches and saves them at job end (preflight stage
+      'true' restores the caches and saves them at job end (verify stage
       only). 'false' restores read-only: downstream stages can never publish
       a half-updated cache.
     required: true
   codex:
     description: >-
-      'true' additionally installs the pinned Codex CLI (evals/judge stages).
+      'true' additionally installs the pinned Codex CLI (evals stage).
       Login stays a per-job step so secrets remain step-scoped.
     required: false
     default: 'false'
@@ -26,23 +26,11 @@ runs:
         distribution: temurin
         java-version: '21'
 
-    # tools/versions.sh requires Gradle exactly 9.6.0 on PATH and the repo has
-    # no wrapper (tools/*.sh call `gradle` directly), so the pinned
-    # distribution is installed and checksum-verified instead of generating
-    # a wrapper.
-    - name: Install Gradle 9.6.0
-      shell: bash
-      run: |
-        curl -fsSL -o "$RUNNER_TEMP/gradle.zip" \
-          https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
-        echo "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  $RUNNER_TEMP/gradle.zip" | sha256sum -c -
-        unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
-        echo "$RUNNER_TEMP/gradle-9.6.0/bin" >> "$GITHUB_PATH"
-
-    # Both caches are shared state the eval run depends on:
+    # ~/.gradle and ~/.cache/selenium are shared state the eval depends on:
     # ~/.gradle because tools/*.sh resolve dependencies with
     # `gradle --offline`, ~/.cache/selenium because the eval forces
-    # SE_OFFLINE=true (see the warmup step in the preflight job).
+    # SE_OFFLINE=true. Restored BEFORE the Gradle install so the pinned
+    # distribution under ~/.gradle/dist survives across runs.
     - name: Restore Gradle + Selenium caches (saved at job end)
       if: inputs.save-cache == 'true'
       uses: actions/cache@v4
@@ -65,6 +53,23 @@ runs:
         restore-keys: |
           ${{ runner.os }}-evals-
         fail-on-cache-miss: true
+
+    # tools/versions.sh requires Gradle exactly 9.6.0 on PATH and the repo has
+    # no wrapper (tools/*.sh call `gradle` directly). The pinned distribution
+    # lives under ~/.gradle/dist so it is restored with the shared cache and
+    # the 100MB download + checksum verification only happens on a cold cache.
+    - name: Install Gradle 9.6.0
+      shell: bash
+      run: |
+        dist="$HOME/.gradle/dist/gradle-9.6.0"
+        if [ ! -x "$dist/bin/gradle" ]; then
+          curl -fsSL -o "$RUNNER_TEMP/gradle.zip" \
+            https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
+          echo "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  $RUNNER_TEMP/gradle.zip" | sha256sum -c -
+          mkdir -p "$HOME/.gradle/dist"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$HOME/.gradle/dist"
+        fi
+        echo "$dist/bin" >> "$GITHUB_PATH"
 
     - name: Python 3 (evidence adapter requires 3.9+)
       uses: actions/setup-python@v5
@@ -91,9 +96,23 @@ runs:
         }
         EOF
 
+    # Pinned CLI cached under an immutable versioned key: restored on every
+    # run, saved only once ever — npm is never touched again unless the pin
+    # moves (a new key then caches the new version).
+    - name: Codex CLI cache
+      if: inputs.codex == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/codex
+        key: ${{ runner.os }}-codex-0.167.0
+
     - name: Install Codex CLI
       if: inputs.codex == 'true'
       shell: bash
       run: |
-        npm install --global @openai/codex@0.167.0
+        if ! "$HOME/.cache/codex/bin/codex" --version 2>/dev/null | grep -q '0\.167\.0'; then
+          npm install --global --prefix "$HOME/.cache/codex" \
+            --no-fund --no-audit --loglevel=error @openai/codex@0.167.0
+        fi
+        echo "$HOME/.cache/codex/bin" >> "$GITHUB_PATH"
         codex --version

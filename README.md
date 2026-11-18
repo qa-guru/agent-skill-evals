@@ -30,16 +30,24 @@ post-merge signal, not a per-PR gate. Runs are serialized per ref via
 `concurrency` — a merge burst queues rather than overlapping paid runs. A
 `schedule` block is present but commented out; uncomment deliberately.
 
-Five sequential stages: `preflight` installs the toolchain and warms the
-shared caches → `tests` runs the free offline verification (compile,
-wrapper, evidence unit tests, case listing) → each paid eval group is an
-explicit stage: `evals` runs the `run-tests` cases and `fix-tests` runs the
-`fix-failing-test` case (agent fix plus an independent browser
-verification), each logging Codex in and uploading its evidence → `judge`
-(only when the `LLM_JUDGE` repository variable is `1`) re-runs all cases
-under an LLM rubric and uploads its evidence separately. A failed stage
-stops the chain before any further spend. Every stage provisions the same
-environment via the composite action `.github/actions/eval-env`.
+Two jobs on the free/paid boundary, both provisioning the same environment
+via the composite action `.github/actions/eval-env`:
+
+- `verify` installs the toolchain, warms the shared caches with one online
+  `login-success` browser run, then runs every free check fully offline
+  (compile, wrapper, evidence unit tests, case listing).
+- `evals` logs Codex in once, runs the `run-tests` cases, then the
+  `fix-failing-test` case (agent fix plus an independent browser
+  verification), and commits the verified fix back to `main` as
+  `github-actions[bot]` (a `[skip ci]` commit — the fix is already
+  JUnit-verified, so no second pipeline pass burns eval tokens). Setting
+  the `LLM_JUDGE` repository variable to `1` adds a judged re-run of every
+  case. One `evals/runs/` evidence artifact is uploaded on every outcome.
+
+A failed step stops the chain before any further spend. Exception: a failed
+login TEST warns and continues — SUT/test mismatch is a valid signal this
+pipeline exists to measure; only a run that never executes (no JUnit XML)
+is an infra failure worth stopping for.
 
 Required configuration (Settings → Secrets and variables → Actions):
 
@@ -55,9 +63,10 @@ Notes:
   calls plus one judge call per case — because `LLM_JUDGE` is only honored
   while a case executes.
 - `SE_OFFLINE=true` inside the eval means Selenium Manager cannot download a
-  driver mid-run. The workflow warms `~/.cache/selenium` with one authorized
-  `login-success` browser run, after an online `gradle testClasses` (the tool
-  wrappers resolve with `gradle --offline` and cannot fetch dependencies on a
-  cold cache). Both directories are restored via `actions/cache`.
+  driver mid-run. The workflow warms `~/.cache/selenium` and the Gradle
+  runtime classpath with one online `gradle test` (the tool wrappers resolve
+  with `gradle --offline` and cannot fetch dependencies on a cold cache).
+  Both directories plus the pinned Gradle distribution and the Codex CLI
+  install are restored via `actions/cache`.
 - `evals/runs/` is uploaded as a workflow artifact on every outcome
   (`if-no-files-found: warn`, 30-day retention). Evidence is never cleaned.
