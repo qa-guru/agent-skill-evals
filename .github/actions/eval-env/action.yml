@@ -115,4 +115,4 @@ runs:
             --no-fund --no-audit --loglevel=error @openai/codex@0.167.0
         fi
         echo "$HOME/.cache/codex/bin" >> "$GITHUB_PATH"
-        codex --version
+        "$HOME/.cache/codex/bin/codex" --version
