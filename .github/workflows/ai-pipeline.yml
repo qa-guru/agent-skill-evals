@@ -156,6 +156,8 @@ jobs:
     name: 'evals: fix-failing-test (paid)'
     needs: evals
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # commits the eval-verified test fix back to main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -183,6 +185,34 @@ jobs:
 
       - name: Run fix-failing-test cases (paid model calls)
         run: sh tools/evals.sh --allow-agent group fix-failing-test
+
+      # Close the loop: on a green case, evals.sh preserved the agent's
+      # verified file as evals/runs/<case>/fixed-test — the file check_source
+      # proved is "committed source + SUT literal only" and the independent
+      # JUnit run proved passes against the real SUT. Commit it back so the
+      # repo test actually tracks the contract. [skip ci]: the file is
+      # already verified; a second pipeline run would only re-burn paid
+      # evals. No-op when the committed test already matches the SUT.
+      - name: Commit the eval-verified test fix back to main
+        run: |
+          fixed=$(ls -t evals/runs/fix-failing-stale-expectation-*/fixed-test 2>/dev/null | head -1)
+          if [ -z "$fixed" ]; then
+            echo "no verified fix artifact produced — nothing to commit"
+            exit 0
+          fi
+          cp "$fixed" src/test/java/tests/LoginTest.java
+          if git diff --quiet -- src/test/java/tests/LoginTest.java; then
+            echo "committed test already matches the SUT — nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/test/java/tests/LoginTest.java
+          git commit -m "Apply eval-verified login test fix [skip ci]" \
+                   -m "fix-failing-stale-expectation passed: agent correction verified by the independent offline browser run."
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
 
       # Run transcripts are evidence: upload on every outcome, never clean.
       - name: Upload eval evidence (evals/runs/)

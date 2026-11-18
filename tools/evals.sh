@@ -285,6 +285,9 @@ for f in $selected; do
   fi
 
   if [ "$fails" -eq 0 ]; then res=PASS; pass_total=$((pass_total + 1)); else res=FAIL; fail_total=$((fail_total + 1)); fi
+  if [ "$res" = PASS ] && [ -n "$FIX_TEST" ] && [ -f "$abs_work/$FIX_TEST" ]; then
+    cp "$abs_work/$FIX_TEST" "$abs_out/fixed-test"
+  fi
   printf 'CASE %s [%s] %s (agent=%s, artifacts=%s)\n' "$ID" "$GROUP" "$res" "$agent" "$abs_out"
   cat "$abs_out/grade.txt"
   case_results="$case_results $ID:$res"
