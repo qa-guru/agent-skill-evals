@@ -1,9 +1,0 @@
-/bin/zsh -lc 'cat .agents/skills/fix-failing-test/SKILL.md knowledge/testing/run-tests.md knowledge/architecture/overview.md knowledge/testing/debugging.md knowledge/testing/assertions.md'
-/bin/zsh -lc \
-/bin/zsh -lc \
-/bin/zsh -lc 'sh tools/compile-tests.sh'
-/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut one login-success'
-/bin/zsh -lc 'cat build/test-results/test/TEST-tests.LoginTest.xml'
-/bin/zsh -lc 'mkdir -p build/evidence/login-before-fix\ncp build/test-results/test/TEST-tests.LoginTest.xml build/evidence/login-before-fix/\ncp -R build/reports/tests build/evidence/login-before-fix/reports\nshasum -a 256 login.html'
-/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut one login-success'
-/bin/zsh -lc 'cat build/test-results/test/TEST-tests.LoginTest.xml\nshasum -a 256 login.html'

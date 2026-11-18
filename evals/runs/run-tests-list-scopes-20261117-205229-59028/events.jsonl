@@ -1,5 +1,0 @@
-{"type":"thread.started","thread_id":"stub"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"c1","type":"command_execution","command":"/bin/zsh -lc 'sh tools/run-tests.sh list'","aggregated_output":"login-success [login] Successful login\\n","status":"completed","exit_code":0}}
-{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"login-success, group login."}}
-{"type":"turn.completed","usage":{}}

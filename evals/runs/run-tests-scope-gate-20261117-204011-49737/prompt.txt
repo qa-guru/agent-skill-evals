@@ -1,1 +1,0 @@
-Run the existing login test and show the results. First list scopes and check local CLI prerequisites. I have not authorized browser/SUT execution: do not start it until I approve. Report what is blocked and the required authorization.

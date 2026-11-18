@@ -1,1 +1,0 @@
-test defect: stale expectation fixed; PASS

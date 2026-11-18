@@ -1,2 +1,0 @@
-{"type":"item.completed","item":{"type":"command_execution","command":"/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut one login-success'","exit_code":0}}
-{"type":"item.completed","item":{"type":"agent_message","text":"test defect: stale expectation fixed; PASS"}}

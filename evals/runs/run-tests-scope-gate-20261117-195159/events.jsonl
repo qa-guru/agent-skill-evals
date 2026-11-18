@@ -1,3 +1,0 @@
-{"type":"item.completed","item":{"type":"command_execution","command":"/bin/zsh -lc 'sh tools/run-tests.sh --allow-sut all'","exit_code":0}}
-{"type":"item.completed","item":{"type":"command_execution","command":"/bin/zsh -lc 'gradle --offline test'","exit_code":0}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Done."}}

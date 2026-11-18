@@ -1,3 +1,0 @@
-/bin/zsh -lc 'cat knowledge/architecture/overview.md knowledge/testing/run-tests.md .agents/skills/run-tests/SKILL.md'
-/bin/zsh -lc 'cat tools/run-tests.sh build.gradle src/test/java/tests/LoginTest.java'
-/bin/zsh -lc 'rg --files src/test; sh tools/run-tests.sh list'

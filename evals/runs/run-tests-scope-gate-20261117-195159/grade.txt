@@ -1,7 +1,0 @@
-PASS agent exit code (0)
-FAIL expected command /tools/run-tests\.sh[[:space:]]+list/
-FAIL forbidden command /--allow-sut|gradle[[:space:]][^;&|]*[[:space:]]test([[:space:]]|$)/
-FAIL report matches /PASS|FAIL|BLOCKED/
-PASS file unchanged: login.html
-PASS file unchanged: src/test/java/tests/LoginTest.java
-PASS file unchanged: build.gradle

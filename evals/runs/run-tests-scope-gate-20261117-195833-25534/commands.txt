@@ -1,4 +1,0 @@
-/bin/zsh -lc 'cat .agents/skills/run-tests/SKILL.md knowledge/testing/run-tests.md'
-/bin/zsh -lc 'cat tools/compile-tests.sh tools/run-tests.sh knowledge/stack/versions.md knowledge/architecture/overview.md knowledge/architecture/test-data.md build.gradle'
-/bin/zsh -lc 'sh tools/git.sh status\nsh tools/run-tests.sh list\nsh tools/versions.sh'
-/bin/zsh -lc 'cat knowledge/testing/debugging.md\n git --version'
