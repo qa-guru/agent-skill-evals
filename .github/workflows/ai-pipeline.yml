@@ -1,11 +1,12 @@
 name: ai-pipeline
 
-# Self-healing login-test pipeline driven by an agent healer. On every push
+# Self-healing login-test pipeline driven by an LLM healer. On every push
 # to main the real browser login test runs first — a green run ends there
-# with zero paid calls. A red run invokes the Codex agent: it reads the SUT
-# contract (login.html) plus the failure log and minimally rewrites ONLY
-# LoginTest.java. The same browser test is then re-run as the authority —
-# the agent's own word never counts. A healed file is committed back as
+# with zero paid calls. A red run calls tools/heal-test.py: one LLM request
+# sends the SUT contract (login.html) + the test + the failure log and gets
+# back a rewritten LoginTest.java. The same browser test is then re-run as
+# the authority — the model's word never counts; a second attempt feeds the
+# new failure log back. A healed file is committed back as
 # github-actions[bot] with [skip ci]. If no honest test can pass because
 # the SUT itself is broken, the run stays red — green is never faked.
 on:
@@ -37,16 +38,15 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # ~/.gradle/dist holds the pinned Gradle install, ~/.cache/selenium the
-      # browser/driver pair, ~/.cache/codex the pinned agent CLI. One restore
-      # covers all three — cold caches download once, warm runs install none.
+      # ~/.gradle/dist holds the pinned Gradle install, ~/.cache/selenium
+      # the browser/driver pair. One restore covers both — cold caches
+      # download once, warm runs install nothing.
       - name: Restore caches
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle
             ~/.cache/selenium
-            ~/.cache/codex
           key: ${{ runner.os }}-verify-${{ hashFiles('build.gradle') }}
           restore-keys: |
             ${{ runner.os }}-verify-
@@ -100,78 +100,43 @@ jobs:
             echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install Codex CLI (heal path only)
-        if: steps.first.outputs.failed == 'true'
-        run: |
-          if ! "$HOME/.cache/codex/bin/codex" --version 2>/dev/null | grep -q '0\.167\.0'; then
-            npm install --global --prefix "$HOME/.cache/codex" \
-              --no-fund --no-audit --loglevel=error @openai/codex@0.167.0
-          fi
-          echo "$HOME/.cache/codex/bin" >> "$GITHUB_PATH"
-
-      - name: Codex login (repo secret required)
+      # The LLM is the healer — it reasons over the live SUT contract, so
+      # arbitrary SUT changes (renamed selectors, restructured JS, new
+      # credentials, new copy) are in scope, not a fixed list of patterns.
+      # One chat call returns the whole corrected LoginTest.java.
+      - name: LLM heals the test (paid)
         if: steps.first.outputs.failed == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
-        run: |
-          if [ -n "${OPENAI_API_KEY:-}" ]; then
-            printenv OPENAI_API_KEY | codex login --with-api-key
-          elif [ -n "${CODEX_ACCESS_TOKEN:-}" ]; then
-            printenv CODEX_ACCESS_TOKEN | codex login --with-access-token
-          else
-            echo "::error::No Codex credential. Add repository secret OPENAI_API_KEY (or CODEX_ACCESS_TOKEN) under Settings > Secrets and variables > Actions."
-            exit 1
-          fi
+        run: python3 tools/heal-test.py build/heal/first-pass.log
 
-      # The agent is the healer — it reasons over the live SUT contract, so
-      # arbitrary SUT changes (renamed selectors, restructured JS, new
-      # credentials, new copy) are in scope, not a fixed list of patterns.
-      # Guards after the call: only LoginTest.java may be touched, and the
-      # independent rerun — not the agent's report — decides green.
-      - name: Agent heals the test
-        if: steps.first.outputs.failed == 'true'
-        run: |
-          codex exec --ephemeral --skip-git-repo-check \
-            --sandbox workspace-write -C "$GITHUB_WORKSPACE" \
-            --add-dir "$HOME/.gradle" --add-dir "$HOME/.cache/selenium" \
-            -c 'sandbox_workspace_write.network_access=true' \
-            -o build/heal/last-message.txt "$(cat <<'PROMPT'
-          The browser test tests.LoginTest.successfulLoginTest just failed;
-          its output is at build/heal/first-pass.log.
-
-          login.html is the system under test and the contract — NEVER edit
-          it. Never edit anything outside src/test/java/tests/LoginTest.java.
-
-          Read login.html, the test and the failure log. Determine which
-          contract points the test is stale on — element selectors
-          (data-testid), credentials, expected message — and update ONLY
-          LoginTest.java with minimal edits so it matches what the SUT
-          actually provides and renders. Do not weaken the scenario: it must
-          still fill the login form, submit it and assert the success banner.
-
-          Then verify yourself:
-          gradle test --tests 'tests.LoginTest.successfulLoginTest'
-
-          If no honest test can pass because the SUT itself is broken, do not
-          hack the test — report UNHEALABLE with the reason instead.
-
-          Final answer must start with HEALED or UNHEALABLE, then one
-          sentence of evidence.
-          PROMPT
-          )"
-
+      # Guards: only LoginTest.java may be touched, and the independent
+      # rerun — not the model's word — decides green. A failed rerun feeds
+      # back once for a second attempt; still red means real SUT breakage.
       - name: Guard + independent verification + commit healed test
         if: steps.first.outputs.failed == 'true'
         shell: bash  # pipefail: a red rerun must fail the step, not tee's 0
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          touched=$(git status --porcelain | awk '{print $2}' | grep -vx 'src/test/java/tests/LoginTest.java' || true)
-          if [ -n "$touched" ]; then
-            echo "::error::agent touched files outside LoginTest.java: $touched"
+          for i in 1 2; do
+            touched=$(git status --porcelain | awk '{print $2}' | grep -vx 'src/test/java/tests/LoginTest.java' || true)
+            if [ -n "$touched" ]; then
+              echo "::error::heal touched files outside LoginTest.java: $touched"
+              exit 1
+            fi
+            if gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee "build/heal/verify-$i.log"; then
+              ok=1; break
+            fi
+            if [ "$i" -lt 2 ]; then
+              echo "::warning::heal attempt $i failed verification — retrying with feedback"
+              python3 tools/heal-test.py "build/heal/verify-$i.log"
+            fi
+          done
+          if [ "${ok:-0}" != 1 ]; then
+            echo "::error::test still red after 2 heal attempts — likely real SUT breakage"
             exit 1
           fi
-          # The rerun is the only authority — never the agent's report.
-          gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee build/heal/verify-pass.log
           if git diff --quiet -- src/test/java/tests/LoginTest.java; then
             echo "test green; nothing to commit"
             exit 0

@@ -29,17 +29,18 @@ caches and the Codex CLI are restored via `actions/cache`):
 1. **First pass** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
    runs the real browser login flow. A green run ends here: zero paid calls,
    nothing to heal.
-2. **Heal** (paid, only on red) — the Codex agent reads `login.html`, the
-   test and the failure log, and minimally rewrites **only**
-   `LoginTest.java` so it matches what the SUT now provides — renamed
-   selectors, new credentials, new copy, restructured markup. Because the
-   agent reasons over the live contract, it is not limited to a fixed list
-   of patterns. Requires the `OPENAI_API_KEY` (or `CODEX_ACCESS_TOKEN`)
-   repository secret.
+2. **Heal** (paid, only on red) — `tools/heal-test.py` sends `login.html`,
+   the test and the failure log to an OpenAI-compatible chat endpoint in a
+   single call and writes back a minimally corrected `LoginTest.java`. The
+   model reasons over the live contract, so renamed selectors, new
+   credentials, new copy or restructured markup are all in scope — no fixed
+   patterns. Env: `OPENAI_API_KEY` (repo secret), optional `HEAL_API_BASE`,
+   `HEAL_MODEL` (default `gpt-4.1-mini`).
 3. **Verify** — the same browser test is re-run independently. Green → the
    healed file is committed back as `github-actions[bot]` with `[skip ci]`.
-   A guard fails the run if the agent touched anything outside
-   `LoginTest.java`, and a red rerun stays red — the SUT itself is broken.
+   A guard fails the run if anything outside `LoginTest.java` changed; a
+   red rerun feeds back for a second attempt, and still red stays red —
+   the SUT itself is broken.
 
 Edit `login.html`, push: green when the agent can honestly heal the test,
 red when the SUT no longer provides what the scenario needs.
