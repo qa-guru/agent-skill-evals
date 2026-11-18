@@ -84,16 +84,21 @@ jobs:
 
       # First pass — free, and on a cold cache it also warms the Gradle
       # classpath and Selenium caches. Green ends the run here; red arms the
-      # paid heal path below and the log becomes the agent's evidence.
+      # paid heal path below and the log becomes the agent's evidence. The
+      # exit code is captured into an output — NEVER continue-on-error:
+      # that flag would mark the step successful while the test is red.
       - name: Login test — first pass
         id: first
-        continue-on-error: true
         run: |
           mkdir -p build/heal
-          gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee build/heal/first-pass.log
+          if gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee build/heal/first-pass.log; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install Codex CLI (heal path only)
-        if: steps.first.outcome == 'failure'
+        if: steps.first.outputs.failed == 'true'
         run: |
           if ! "$HOME/.cache/codex/bin/codex" --version 2>/dev/null | grep -q '0\.167\.0'; then
             npm install --global --prefix "$HOME/.cache/codex" \
@@ -102,7 +107,7 @@ jobs:
           echo "$HOME/.cache/codex/bin" >> "$GITHUB_PATH"
 
       - name: Codex login (repo secret required)
-        if: steps.first.outcome == 'failure'
+        if: steps.first.outputs.failed == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN }}
@@ -122,7 +127,7 @@ jobs:
       # Guards after the call: only LoginTest.java may be touched, and the
       # independent rerun — not the agent's report — decides green.
       - name: Agent heals the test
-        if: steps.first.outcome == 'failure'
+        if: steps.first.outputs.failed == 'true'
         run: |
           codex exec --ephemeral --skip-git-repo-check \
             --sandbox workspace-write -C "$GITHUB_WORKSPACE" \
@@ -154,7 +159,7 @@ jobs:
           )"
 
       - name: Guard + independent verification + commit healed test
-        if: steps.first.outcome == 'failure'
+        if: steps.first.outputs.failed == 'true'
         run: |
           touched=$(git status --porcelain | awk '{print $2}' | grep -vx 'src/test/java/tests/LoginTest.java' || true)
           if [ -n "$touched" ]; then
