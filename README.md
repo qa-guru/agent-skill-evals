@@ -25,7 +25,7 @@ sh tools/run-tests.sh --allow-sut one login-success   # real browser run (author
 ## CI — `.github/workflows/ai-pipeline.yml` (`ai-pipeline`)
 
 Runs on every push to `main` and manually via `workflow_dispatch`; runs are
-serialized per ref via `concurrency`. Four jobs, each visible as its own
+serialized per ref via `concurrency`. Three jobs, each visible as its own
 stage; `test`/`heal`/`verify` share the browser-test environment via the
 `test-env` composite action (Gradle dist + Selenium caches + headless):
 
@@ -43,11 +43,11 @@ stage; `test`/`heal`/`verify` share the browser-test environment via the
    optional `HEAL_API_BASE`, `HEAL_MODEL` (default `gpt-4.1-mini`). A guard
    fails the job if anything outside `LoginTest.java` changed or the file
    is untouched; the healed file leaves the job as an artifact.
-3. **verify** — a fresh runner applies only the artifact file and runs
-   `gradle cleanTest test`. The rerun is the sole authority — the agent's
-   report never counts; red stays red: the SUT itself is broken.
-4. **commit** — only on verified green: `github-actions[bot]` commits the
-   healed test to `main` with `[skip ci]`.
+3. **verify + commit** — a fresh runner applies only the artifact file and
+   runs `gradle cleanTest test`. The rerun is the sole authority — the
+   agent's report never counts; red stays red: the SUT itself is broken.
+   On verified green `github-actions[bot]` commits the healed test to
+   `main` with `[skip ci]`.
 
 Edit `login.html`, push: green when the agent can honestly heal the test,
 red when the SUT no longer provides what the scenario needs.

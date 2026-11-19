@@ -1,15 +1,15 @@
 name: ai-pipeline
 
-# Self-healing login-test pipeline in four stages.
+# Self-healing login-test pipeline in three stages.
 #   test   — the real browser login test; a red run is data, not a run
 #            failure (green run = healed), so it reports via an output.
 #   heal   — only on red: the LLM agent loop works the fix-failing-test
 #            skill inside the repo harness and hands the healed
 #            LoginTest.java downstream as an artifact.
 #   verify — on a fresh runner: apply the artifact, gradle cleanTest test
-#            is the only authority; never the agent's word.
-#   commit — only on verified green: bot-commits the healed file to main
-#            with [skip ci]. Still red after heal = real SUT breakage.
+#            is the only authority; never the agent's word. On verified
+#            green the same job bot-commits the file to main with
+#            [skip ci]. Still red after heal = real SUT breakage.
 on:
   push:
     branches: [main]
@@ -60,7 +60,7 @@ jobs:
             echo "failed=false" >> "$GITHUB_OUTPUT"
           else
             echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::login test failed — heal stage armed"
+            echo "login test failed — heal stage armed"
           fi
 
       - name: Share failure log with the heal stage
@@ -128,9 +128,11 @@ jobs:
           retention-days: 1
 
   verify:
-    name: verify
+    name: verify + commit
     needs: heal
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # commits the verified test back to main
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -169,27 +171,10 @@ jobs:
           path: build/heal/verify.log
           retention-days: 7
 
-  commit:
-    name: commit healed test
-    needs: verify
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # commits the verified test back to main
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Download healed test
-        uses: actions/download-artifact@v8
-        with:
-          name: healed-test
-          path: build/healed
-
-      # The file is already verified green by the previous stage — commit it
-      # without a third paid pipeline pass ([skip ci]).
+      # The applied file is already verified green by the step above —
+      # commit it without a third paid pipeline pass ([skip ci]).
       - name: Commit verified test to main
         run: |
-          cp build/healed/LoginTest.java src/test/java/tests/LoginTest.java
           git diff -- src/test/java/tests/LoginTest.java
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
