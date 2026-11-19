@@ -1,0 +1,49 @@
+name: test-env
+description: >-
+  Shared browser-test environment: Gradle/Selenium caches, pinned Gradle
+  9.6.0 under ~/.gradle/dist (restored with the cache, downloaded once on a
+  cold cache), and the headless init script that reaches every forked test
+  JVM on the runner.
+runs:
+  using: composite
+  steps:
+    - name: Restore Gradle + Selenium caches
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.gradle
+          ~/.cache/selenium
+        key: ${{ runner.os }}-verify-${{ hashFiles('build.gradle') }}
+        restore-keys: |
+          ${{ runner.os }}-verify-
+
+    # tools/versions.sh requires Gradle exactly 9.6.0 on PATH and the repo
+    # has no wrapper (tools/*.sh call `gradle` directly).
+    - name: Install Gradle 9.6.0
+      shell: bash
+      run: |
+        dist="$HOME/.gradle/dist/gradle-9.6.0"
+        if [ ! -x "$dist/bin/gradle" ]; then
+          curl -fsSL -o "$RUNNER_TEMP/gradle.zip" \
+            https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
+          echo "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  $RUNNER_TEMP/gradle.zip" | sha256sum -c -
+          mkdir -p "$HOME/.gradle/dist"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$HOME/.gradle/dist"
+        fi
+        echo "$dist/bin" >> "$GITHUB_PATH"
+
+    # CI runners have no display, and a -D flag on the gradle CLI does not
+    # reach forked test JVMs — the init script is the one channel that
+    # reaches every test JVM on this runner (including the agent's own
+    # gradle runs inside its tool loop).
+    - name: Force headless browser for all Gradle test runs
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.gradle/init.d"
+        cat > "$HOME/.gradle/init.d/selenide-headless.gradle" <<'EOF'
+        allprojects {
+            tasks.withType(Test).configureEach {
+                systemProperty 'selenide.headless', 'true'
+            }
+        }
+        EOF

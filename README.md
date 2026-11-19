@@ -25,27 +25,29 @@ sh tools/run-tests.sh --allow-sut one login-success   # real browser run (author
 ## CI — `.github/workflows/ai-pipeline.yml` (`ai-pipeline`)
 
 Runs on every push to `main` and manually via `workflow_dispatch`; runs are
-serialized per ref via `concurrency`.
+serialized per ref via `concurrency`. Four jobs, each visible as its own
+stage; `test`/`heal`/`verify` share the browser-test environment via the
+`test-env` composite action (Gradle dist + Selenium caches + headless):
 
-One job (Java + pinned Gradle 9.6.0 for the browser test; python3 for the
-LLM heal call — both already on the runner; caches via `actions/cache`):
-
-1. **First pass** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`
-   runs the real browser login flow. A green run ends here: zero paid calls,
-   nothing to heal.
-2. **Heal** (paid, only on red) — `tools/heal-agent.py` runs the LLM as a
-   coding agent **inside the repo harness**: it reads `AGENTS.md`, loads the
-   `fix-failing-test` skill and the knowledge docs it references, reproduces
-   via `tools/run-tests.sh`, applies the minimal correction to
-   `LoginTest.java` and re-runs to verify — through `read_file`,
-   `write_file` and `run_command` tools on an OpenAI-compatible chat
-   endpoint. Env: `OPENAI_API_KEY` (repo secret), optional `HEAL_API_BASE`,
-   `HEAL_MODEL` (default `gpt-4.1-mini`).
-3. **Verify** — the same browser test is re-run independently. Green → the
-   healed file is committed back as `github-actions[bot]` with `[skip ci]`.
-   A guard fails the run if anything outside `LoginTest.java` changed; a
-   red rerun feeds back for a second attempt, and still red stays red —
-   the SUT itself is broken.
+1. **test** — `gradle test --tests 'tests.LoginTest.successfulLoginTest'`.
+   A green run ends the pipeline here: zero paid calls. A red test is data,
+   not a run failure — it arms the heal stage via a job output and hands
+   the failure log downstream as an artifact.
+2. **heal** (paid, only on red) — `tools/heal-agent.py` runs the LLM as a
+   coding agent **inside the repo harness**: it reads `AGENTS.md` and the
+   `fix-failing-test` skill (both injected into its prompt), opens the
+   knowledge docs they reference, reproduces via `tools/run-tests.sh`,
+   applies the minimal correction to `LoginTest.java` and self-verifies —
+   through `read_file`, `write_file` and `run_command` on an
+   OpenAI-compatible chat endpoint. Env: `OPENAI_API_KEY` (repo secret),
+   optional `HEAL_API_BASE`, `HEAL_MODEL` (default `gpt-4.1-mini`). A guard
+   fails the job if anything outside `LoginTest.java` changed or the file
+   is untouched; the healed file leaves the job as an artifact.
+3. **verify** — a fresh runner applies only the artifact file and runs
+   `gradle cleanTest test`. The rerun is the sole authority — the agent's
+   report never counts; red stays red: the SUT itself is broken.
+4. **commit** — only on verified green: `github-actions[bot]` commits the
+   healed test to `main` with `[skip ci]`.
 
 Edit `login.html`, push: green when the agent can honestly heal the test,
 red when the SUT no longer provides what the scenario needs.
