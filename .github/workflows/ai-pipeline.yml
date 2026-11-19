@@ -31,10 +31,10 @@ jobs:
       contents: write  # commits the healed test back to main
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Java 21 (Temurin)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -43,7 +43,7 @@ jobs:
       # the browser/driver pair. One restore covers both — cold caches
       # download once, warm runs install nothing.
       - name: Restore caches
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload heal evidence on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: heal-evidence
           path: build/heal/

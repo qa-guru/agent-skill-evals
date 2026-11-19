@@ -130,6 +130,7 @@ def main():
     model = os.environ.get("HEAL_MODEL", "gpt-4.1-mini")
     fail_log = sys.argv[1] if len(sys.argv) > 1 else ""
 
+    skill = ROOT / '.agents/skills/fix-failing-test/SKILL.md'
     system = f"""You are the QA automation agent working inside this repository.
 Your operating contract is AGENTS.md:
 
@@ -137,10 +138,15 @@ Your operating contract is AGENTS.md:
 {(ROOT / 'AGENTS.md').read_text(encoding='utf-8')}
 </AGENTS.md>
 
-The browser test tests.LoginTest.successfulLoginTest just failed. Start by
-reading .agents/skills/fix-failing-test/SKILL.md and follow it end to end,
-using the tools provided:
-- read_file — the skill doc, the knowledge pages it references, login.html,
+Your active skill is fix-failing-test — follow it end to end:
+
+<SKILL fix-failing-test>
+{skill.read_text(encoding='utf-8')}
+</SKILL>
+
+The browser test tests.LoginTest.successfulLoginTest just failed. Work the
+skill using the tools provided:
+- read_file — the knowledge pages the skill references, login.html,
   the failing test, {fail_log}
 - run_command — tools/*.sh wrappers and gradle test runs
 - write_file — the minimal correction; the ONLY writable path is {TEST_REL}
