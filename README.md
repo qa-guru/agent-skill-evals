@@ -47,16 +47,19 @@ does not run the browser test.
 The [workflow](.github/workflows/ai-pipeline.yml) runs on pushes to `main` and on
 manual dispatch. Chrome runs headless.
 
-1. **test** runs `login-success`. A pass makes no model calls. Only a Selenide UI
-   failure recorded for that test is handed off; a failure to compile or start
-   the browser is not a reason to edit the test.
-2. **heal** uses the JUnit failure, the fixture, and the skill to propose a fix.
-   The agent can run predefined checks and replace only test IDs or string
-   values in the existing Selenide steps. This paid step needs the
-   `OPENAI_API_KEY` repository secret and sends lesson context to the model.
-3. **verify** runs the same test on a fresh checkout with the candidate. If it
-   passes, download `verified-login-patch` from the run. Review the diff against
-   the intended change before applying it. The workflow never pushes a commit.
+1. **test** runs the full suite with `gradle test --rerun`. A pass or a build
+   error without a failing JUnit test case makes no model calls.
+2. **heal** reads the reports and reruns the failing classes. If the same
+   failures reproduce, the agent uses the skill to inspect the code and fix
+   proven test defects. It can edit Java test code under `src/test/java`, not
+   the application or build. The paid step needs the `OPENAI_API_KEY` secret.
+3. **verify** applies the candidate on a fresh runner without the API key,
+   runs the full suite, and checks that the original tests still execute and
+   pass. Download `verified-test-patch` and review the diff before applying it.
+   The workflow never pushes a commit.
+
+Add a new JUnit class under `src/test/java` and Gradle discovers it. The healer
+uses the class names in the reports, not a list of registered tests.
 
 See [AGENTS.md](AGENTS.md) for the agent instructions and
 [Running tests](knowledge/testing/run-tests.md) for the commands and reports.

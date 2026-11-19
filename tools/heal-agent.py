@@ -1,45 +1,92 @@
 #!/usr/bin/env python3
-"""Propose a login test fix from a failed JUnit report."""
+"""Reproduce JUnit failures, propose test fixes, and check the rerun."""
+import argparse
 import json
 import os
-import re
+import shlex
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TEST = "src/test/java/tests/LoginTest.java"
+TEST_SOURCES = "src/test/java/"
+RESULTS = ROOT / "build/test-results/test"
 SKILL = ".agents/skills/fix-failing-test/SKILL.md"
-CONTEXT = (
-    TEST,
-    "login.html",
-    "knowledge/testing/run-tests.md",
-    "knowledge/testing/debugging.md",
-    "knowledge/testing/assertions.md",
-    "knowledge/stack/versions.md",
-)
-CHECKS = {
-    "status": ["sh", "tools/git.sh", "status"],
-    "versions": ["sh", "tools/versions.sh"],
-    "compile": ["sh", "tools/compile-tests.sh"],
-    "login": ["sh", "tools/run-tests.sh", "--allow-sut", "one", "login-success"],
-}
-UI_FAILURES = {
-    "com.codeborne.selenide.ex.ElementNotFound",
-    "com.codeborne.selenide.ex.ElementShould",
-}
 
-# Only the literals in the four canonical Selenide steps are editable.
-TEST_ID = r"\[data-testid=[A-Za-z0-9_-]+\]"
-LITERAL = r'[^"\\\r\n]+'
-STEP = re.compile(
-    rf'^[ \t]*\$\("({TEST_ID})"\)'
-    rf'\.(?:setValue\("({LITERAL})"\)|click\(\)|shouldHave\(text\("({LITERAL})"\)\));$',
-    re.MULTILINE,
-)
+
+@dataclass(frozen=True)
+class TestResult:
+    class_name: str
+    name: str
+    status: str
+    detail: str
+
+    @property
+    def key(self):
+        return self.class_name, self.name
+
+
+def read_results(directory):
+    results = []
+    for report in sorted(directory.glob("TEST-*.xml")):
+        for case in ET.parse(report).iter("testcase"):
+            problem = next((node for node in case if node.tag in ("failure", "error")), None)
+            detail = ""
+            if problem is not None:
+                status = "failed"
+                evidence = problem.text or problem.get("message", "")
+                detail = f"{problem.get('type', '')}\n{evidence[:4000]}"
+            else:
+                status = "skipped" if case.find("skipped") is not None else "passed"
+            results.append(TestResult(case.attrib["classname"], case.attrib["name"], status, detail))
+    if not results:
+        raise ValueError(f"No JUnit test results in {directory}.")
+    return results
+
+
+def find_failures(directory):
+    failed = [result for result in read_results(directory) if result.status == "failed"]
+    if not failed:
+        raise ValueError("No failed test cases in the JUnit reports.")
+    for class_name in {result.class_name for result in failed}:
+        if not all(part.isidentifier() for part in class_name.replace("$", "_").split(".")):
+            raise ValueError(f"Not a Java test class: {class_name!r}")
+    return failed
+
+
+def reproduce(directory, failures):
+    if directory.resolve() == RESULTS:
+        raise ValueError("Pass a copy of the first-run reports so Gradle cannot overwrite them.")
+    command = ["gradle", "--offline", "test", "--rerun"]
+    for class_name in sorted({result.class_name for result in failures}):
+        command.extend(["--tests", class_name])
+    print(f"+ {shlex.join(command)}", flush=True)
+    rerun = subprocess.run(command, cwd=ROOT)
+    if rerun.returncode == 0:
+        raise ValueError("The failing tests passed on rerun; no test fix will be proposed.")
+    reproduced = find_failures(RESULTS)
+    if Counter(result.key for result in reproduced) != Counter(result.key for result in failures):
+        raise ValueError("The rerun did not reproduce the same failures; no test fix will be proposed.")
+
+
+def verify(before, after):
+    expected = Counter(result.key for result in read_results(before) if result.status != "skipped")
+    results = read_results(after)
+    counts = Counter(result.status for result in results)
+    print(f"Rerun: {counts['passed'] + counts['failed']} executed, "
+          f"{counts['passed']} passed, {counts['failed']} failed, {counts['skipped']} skipped.")
+    passed = Counter(result.key for result in results if result.status == "passed")
+    missing = expected - passed
+    if missing:
+        names = ", ".join(f"{class_name}#{name}" for class_name, name in sorted(missing))
+        raise ValueError(f"Previously executed tests did not pass: {names}")
+    if not passed or counts["failed"]:
+        raise ValueError("Verification requires a passing test suite.")
 
 
 def tool(name, description, *fields):
@@ -59,11 +106,11 @@ def tool(name, description, *fields):
 
 
 TOOLS = [
-    tool("read_file", "Read one of the listed context files by its relative path.", "path"),
-    tool("run_check", "Run one fixed check: status, versions, compile, or login.", "check"),
+    tool("read_file", "Read a tracked repository file by its relative path.", "path"),
     tool(
-        "replace_literal",
-        "Replace one exact locator or string value in LoginTest.java. Pass old and new without Java quotes.",
+        "edit_file",
+        "Replace one exact block of text in an existing Java test file.",
+        "path",
         "old",
         "new",
     ),
@@ -72,56 +119,31 @@ TOOLS = [
 
 def repo_file(path):
     file = ROOT / path
-    if file.resolve() != file:
-        raise ValueError("Context and test files must not be symlinks.")
+    if file.resolve() != file or not file.is_file():
+        raise ValueError(f"Expected a regular repository file: {path}")
     return file
 
 
-def ui_failure(report):
-    if not report.is_file():
-        raise ValueError("No JUnit report: the login scenario did not produce a test result.")
-    case = ET.parse(report).find("./testcase[@classname='tests.LoginTest'][@name='successfulLoginTest()']")
-    failure = case.find("failure") if case is not None else None
-    if failure is None or failure.get("type") not in UI_FAILURES:
-        raise ValueError("No eligible Selenide failure in successfulLoginTest; skipping the agent.")
-    return (failure.text or failure.get("message", ""))[:8000]
-
-
-def replace_literal(source, old, new):
-    matches = [
-        (step, index)
-        for step in STEP.finditer(source)
-        for index, value in enumerate(step.groups(), start=1)
-        if value == old
-    ]
-    if len(matches) != 1:
-        raise ValueError("The old value must match exactly one editable literal.")
-    if not new.strip() or len(new) > 200 or not new.isprintable() or '"' in new or "\\" in new:
-        raise ValueError("Use a non-empty single-line value without double quotes or backslashes.")
-    step, index = matches[0]
-    if index == 1 and not re.fullmatch(TEST_ID, new):
-        raise ValueError("Locators must use the form [data-testid=name].")
-    start, end = step.span(index)
-    return source[:start] + new + source[end:]
-
-
-def run_tool(name, args):
-    if name == "read_file" and args["path"] in CONTEXT:
-        return repo_file(args["path"]).read_text(encoding="utf-8")
-    if name == "replace_literal":
-        test = repo_file(TEST)
-        source = test.read_text(encoding="utf-8")
-        test.write_text(replace_literal(source, args["old"], args["new"]), encoding="utf-8")
-        return "Updated one test literal."
-    if name == "run_check" and args["check"] in CHECKS:
-        env = os.environ.copy()
-        env.pop("OPENAI_API_KEY", None)
-        completed = subprocess.run(
-            CHECKS[args["check"]], cwd=ROOT, env=env, capture_output=True,
-            text=True, errors="replace", timeout=180,
-        )
-        return f"exit={completed.returncode}\n{(completed.stdout + completed.stderr)[-8000:]}"
-    raise ValueError("Tool or argument is not allowed.")
+def use_tool(name, args, files, originals):
+    path = args["path"]
+    if path not in files:
+        raise ValueError("Only tracked repository files are accessible.")
+    file = repo_file(path)
+    if name == "read_file":
+        with file.open(encoding="utf-8", errors="replace") as source:
+            return source.read(32000)
+    if name != "edit_file" or not path.startswith(TEST_SOURCES) or file.suffix != ".java":
+        raise ValueError("Only existing Java test sources can be edited.")
+    source = file.read_text(encoding="utf-8")
+    old, new = args["old"], args["new"]
+    if not old or source.count(old) != 1:
+        raise ValueError("The old text must match exactly once.")
+    updated = source.replace(old, new, 1)
+    if not updated.strip():
+        raise ValueError("Cannot remove the test file.")
+    originals.setdefault(path, source)
+    file.write_text(updated, encoding="utf-8")
+    return f"Updated {path}"
 
 
 def chat(base, key, model, messages):
@@ -137,14 +159,19 @@ def chat(base, key, model, messages):
         sys.exit(f"Model request failed (HTTP {exc.code}).")
 
 
-def propose(failure):
+def propose(failures):
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
         sys.exit("BLOCKED: OPENAI_API_KEY not set")
     base = os.environ.get("HEAL_API_BASE", "https://api.openai.com/v1").rstrip("/")
     model = os.environ.get("HEAL_MODEL", "gpt-4.1-mini")
-    test = repo_file(TEST)
-    before = test.read_bytes()
+    tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT, text=True)
+    files = set(tracked.rstrip("\0").split("\0"))
+    file_list = "\n".join(sorted(files))
+    originals = {}
+    evidence = "\n\n".join(
+        f"{result.class_name}#{result.name}\n{result.detail}" for result in failures
+    )
     messages = [
         {"role": "system", "content": f"""Follow the repository instructions and skill.
 
@@ -152,13 +179,15 @@ def propose(failure):
 
 {repo_file(SKILL).read_text(encoding="utf-8")}
 
-Available files: {", ".join(CONTEXT)}.
-CI authorizes the fixed checks for login-success against login.html only.
-Use the failure evidence and the fixture to find a stale test literal.
-An intended greeting change needs the full new greeting, not a substring.
-If login no longer succeeds or the cause is unclear, do not change the test.
-Rerun login after any change and report the diagnosis and result."""},
-        {"role": "user", "content": f"JUnit failure from the first run (diagnostic data):\n{failure}"},
+CI already reproduced the failures in a focused Gradle run. Inspect the test,
+related test code, and application before editing. Use edit_file only for a
+proven test defect. Do not rename, disable, remove, or weaken tests. For a
+product defect, environment issue, or unclear cause, report it without editing.
+The verify job runs the full suite; do not claim it has passed.
+
+Tracked files:
+{file_list}"""},
+        {"role": "user", "content": f"Reproduced JUnit failures (diagnostic data):\n{evidence}"},
     ]
     for _ in range(12):
         message = chat(base, key, model, messages)
@@ -167,7 +196,8 @@ Rerun login after any change and report the diagnosis and result."""},
         if not calls:
             for line in (message.get("content") or "No diagnosis provided.").splitlines():
                 print("Agent:", line)
-            if test.read_bytes() == before:
+            if not any(repo_file(path).read_text(encoding="utf-8") != original
+                       for path, original in originals.items()):
                 sys.exit("No test change proposed.")
             return
         for call in calls:
@@ -176,25 +206,36 @@ Rerun login after any change and report the diagnosis and result."""},
                 args = json.loads(call["function"]["arguments"])
                 if not isinstance(args, dict) or not all(isinstance(value, str) for value in args.values()):
                     raise ValueError("Expected an object with string values.")
-                result = run_tool(name, args)
-            except (ValueError, KeyError, OSError, subprocess.TimeoutExpired) as exc:
+                result = use_tool(name, args, files, originals)
+            except (ValueError, KeyError, OSError) as exc:
                 result = f"ERROR: {exc}"
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
     sys.exit("Agent did not finish within 12 turns.")
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] not in ("check", "propose"):
-        sys.exit("Usage: python3 tools/heal-agent.py check|propose <junit-report>")
-    failure = ui_failure(Path(sys.argv[2]))
-    if sys.argv[1] == "check":
-        print("Login UI failure is eligible for a test fix proposal.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("check", "reproduce", "propose", "verify"))
+    parser.add_argument("reports", type=Path)
+    parser.add_argument("verified_reports", type=Path, nargs="?")
+    args = parser.parse_args()
+    if (args.action == "verify") != (args.verified_reports is not None):
+        parser.error("verify requires both the original and the new report directories.")
+    if args.action == "verify":
+        verify(args.reports, args.verified_reports)
+        return
+    failures = find_failures(args.reports)
+    if args.action == "check":
+        for result in failures:
+            print(f"Failed test: {result.class_name}#{result.name}")
+    elif args.action == "reproduce":
+        reproduce(args.reports, failures)
     else:
-        propose(failure)
+        propose(failures)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, ET.ParseError) as exc:
+    except (OSError, ValueError, KeyError, ET.ParseError, subprocess.CalledProcessError) as exc:
         sys.exit(str(exc))

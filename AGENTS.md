@@ -16,7 +16,7 @@ If your client does not discover `.agents/skills/`, read the relevant `SKILL.md`
 - [Version sources](knowledge/stack/versions.md).
 
 ## Safeguards
-- Read the current fixture and test first. Keep the inline Selenide steps and single retrying assertion.
+- Read the failing test and the relevant application or fixture first. Preserve the test's intent and style. For the login lesson, that means inline Selenide steps and one retrying assertion.
 - Do not add dependencies, sleeps, or weaker assertions to get a pass. Do not edit the fixture to repair a test.
 - Ask before downloads, installs, browser execution, external SUT access, CI jobs, uploads, integration writes, or destructive cleanup.
 - Preserve other work and failure evidence. Do not expose secrets or commit/push without an explicit request.

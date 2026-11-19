@@ -24,8 +24,8 @@ sh tools/run-tests.sh --allow-sut group 'login'
 sh tools/run-tests.sh --allow-sut all
 ```
 
-Use `one login-success` for the lesson. The broader scopes currently select
-the same test; `list` shows the fixed selectors, not test discovery.
+Use `one login-success` for the lesson. `list` shows shortcuts for that
+exercise; `all` lets Gradle discover every test, including new classes.
 
 Verify Chrome and the driver are available, then get approval for the selected
 scope against local `login.html`. `--allow-sut` records that approval; it is not
@@ -49,4 +49,5 @@ Script exit codes: 64 = invalid arguments, 69 = missing/mismatched tools,
 Record the exact command, scope, tool versions, exit code, and
 executed/passed/failed/skipped counts. A run with no executed tests is not a pass.
 The [CI demo](../../README.md#github-actions-demo) is separate from a local test
-run. It uses Python 3.9+; the paid healing step also needs an API key.
+run. It uses Python 3.9+ and takes the failed classes from JUnit XML, independent
+of the lesson shortcuts. The paid healing step also needs an API key.

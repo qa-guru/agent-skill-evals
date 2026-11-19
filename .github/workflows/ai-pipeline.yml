@@ -16,29 +16,30 @@ jobs:
   test:
     runs-on: ubuntu-latest
     outputs:
-      eligible: ${{ steps.login.outputs.eligible }}
+      eligible: ${{ steps.suite.outputs.eligible }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/test-env
 
-      - name: Run the login test
-        id: login
+      - name: Run the full test suite
+        id: suite
         run: |
-          if gradle test --rerun --tests 'tests.LoginTest.successfulLoginTest'; then
+          if gradle test --rerun; then
             exit 0
           fi
-          python3 tools/heal-agent.py check build/test-results/test/TEST-tests.LoginTest.xml
-          echo "::warning::Login test failed; passing the report to the heal job."
+          python3 tools/heal-agent.py check build/test-results/test
+          echo "::warning::Tests failed; passing the reports to the heal job."
           echo "eligible=true" >> "$GITHUB_OUTPUT"
 
-      - name: Upload the failed JUnit report
-        if: steps.login.outputs.eligible == 'true'
+      - name: Upload the first-run JUnit reports
+        if: steps.suite.outputs.eligible == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: login-failure
-          path: build/test-results/test/TEST-tests.LoginTest.xml
+          name: first-run-junit
+          path: build/test-results/test/TEST-*.xml
+          if-no-files-found: error
           retention-days: 1
 
   heal:
@@ -52,22 +53,31 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/test-env
 
-      - name: Download the failed JUnit report
+      - name: Download the first-run JUnit reports
         uses: actions/download-artifact@v8
         with:
-          name: login-failure
-          path: build/heal
+          name: first-run-junit
+          path: build/heal/first-run
+
+      - name: Reproduce the failing classes
+        run: python3 tools/heal-agent.py reproduce build/heal/first-run
 
       - name: Propose a test fix (paid)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 tools/heal-agent.py propose build/heal/TEST-tests.LoginTest.xml
+        run: python3 tools/heal-agent.py propose build/test-results/test
 
-      - name: Upload the candidate test
+      - name: Build the candidate patch
+        run: |
+          git diff --check
+          git diff --no-ext-diff --no-textconv -- src/test/java > build/heal/test-fix.patch
+          test -s build/heal/test-fix.patch
+
+      - name: Upload the candidate patch
         uses: actions/upload-artifact@v7
         with:
-          name: login-candidate
-          path: src/test/java/tests/LoginTest.java
+          name: test-candidate
+          path: build/heal/test-fix.patch
           if-no-files-found: error
           retention-days: 1
 
@@ -80,30 +90,37 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/test-env
 
-      - name: Download the candidate test
+      - name: Download the first-run JUnit reports
         uses: actions/download-artifact@v8
         with:
-          name: login-candidate
+          name: first-run-junit
+          path: build/heal/first-run
+
+      - name: Download the candidate patch
+        uses: actions/download-artifact@v8
+        with:
+          name: test-candidate
           path: build/heal
 
       - name: Apply and verify the candidate
         run: |
-          cp build/heal/LoginTest.java src/test/java/tests/LoginTest.java
+          git apply build/heal/test-fix.patch
           git diff --check
-          gradle test --rerun --tests 'tests.LoginTest.successfulLoginTest'
-          git diff -- src/test/java/tests/LoginTest.java > build/heal/login-test.patch
+          gradle test --rerun
+          python3 tools/heal-agent.py verify build/heal/first-run build/test-results/test
 
       - name: Upload the verified patch
         uses: actions/upload-artifact@v7
         with:
-          name: verified-login-patch
-          path: build/heal/login-test.patch
+          name: verified-test-patch
+          path: build/heal/test-fix.patch
+          if-no-files-found: error
 
       - name: Upload verification reports on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: login-verification-failure
+          name: test-verification-failure
           path: |
             build/test-results/test/
             build/reports/tests/
