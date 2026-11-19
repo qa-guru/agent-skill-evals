@@ -1,21 +1,10 @@
 name: ai-pipeline
 
-# Self-healing login-test pipeline in three stages.
-#   test   — the real browser login test; a red run is data, not a run
-#            failure (green run = healed), so it reports via an output.
-#   heal   — only on red: the LLM agent loop works the fix-failing-test
-#            skill inside the repo harness and hands the healed
-#            LoginTest.java downstream as an artifact.
-#   verify — on a fresh runner: apply the artifact, gradle cleanTest test
-#            is the only authority; never the agent's word. On verified
-#            green the same job bot-commits the file to main with
-#            [skip ci]. Still red after heal = real SUT breakage.
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Serialize runs per ref: a burst of merges queues instead of overlapping.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -25,161 +14,97 @@ permissions:
 
 jobs:
   test:
-    name: test
     runs-on: ubuntu-latest
     outputs:
-      failed: ${{ steps.first.outputs.failed }}
+      eligible: ${{ steps.login.outputs.eligible }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Java 21 (Temurin)
-        uses: actions/setup-java@v6
+      - uses: actions/checkout@v7
         with:
-          distribution: temurin
-          java-version: '21'
+          persist-credentials: false
+      - uses: ./.github/actions/test-env
 
-      - name: Test environment (caches, Gradle, headless)
-        uses: ./.github/actions/test-env
-
-      - name: CLI preflight (java/javac 21, gradle 9.6.0, git)
-        run: sh tools/versions.sh
-
-      # Green ends the pipeline here — zero paid calls. Red is captured in
-      # an output (NEVER continue-on-error / a hard-failing job: either
-      # would poison the final run conclusion even after a successful heal)
-      # and the log becomes the agent's evidence downstream.
-      # shell: bash is required — the default `bash -e` lacks pipefail and
-      # tee would swallow gradle's exit code.
-      - name: Browser login test — first pass
-        id: first
-        shell: bash
+      - name: Run the login test
+        id: login
         run: |
-          mkdir -p build/heal
-          if gradle test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee build/heal/first-pass.log; then
-            echo "failed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "login test failed — heal stage armed"
+          if gradle test --rerun --tests 'tests.LoginTest.successfulLoginTest'; then
+            exit 0
           fi
+          python3 tools/heal-agent.py check build/test-results/test/TEST-tests.LoginTest.xml
+          echo "::warning::Login test failed; passing the report to the heal job."
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
 
-      - name: Share failure log with the heal stage
-        if: steps.first.outputs.failed == 'true'
+      - name: Upload the failed JUnit report
+        if: steps.login.outputs.eligible == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: first-pass-log
-          path: build/heal/first-pass.log
+          name: login-failure
+          path: build/test-results/test/TEST-tests.LoginTest.xml
           retention-days: 1
 
   heal:
-    name: heal
     needs: test
-    if: needs.test.outputs.failed == 'true'
+    if: needs.test.outputs.eligible == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Java 21 (Temurin)
-        uses: actions/setup-java@v6
+      - uses: actions/checkout@v7
         with:
-          distribution: temurin
-          java-version: '21'
+          persist-credentials: false
+      - uses: ./.github/actions/test-env
 
-      # The agent self-verifies inside its loop, so it needs the same
-      # browser-test environment as the test stage.
-      - name: Test environment (caches, Gradle, headless)
-        uses: ./.github/actions/test-env
-
-      - name: Download failure log
+      - name: Download the failed JUnit report
         uses: actions/download-artifact@v8
         with:
-          name: first-pass-log
+          name: login-failure
           path: build/heal
 
-      - name: Agent heals the test (paid)
+      - name: Propose a test fix (paid)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: python3 tools/heal-agent.py build/heal/first-pass.log
+        run: python3 tools/heal-agent.py propose build/heal/TEST-tests.LoginTest.xml
 
-      - name: Guard — only LoginTest.java, must differ
-        run: |
-          touched=$(git status --porcelain | awk '{print $2}' | grep -vx 'src/test/java/tests/LoginTest.java' || true)
-          if [ -n "$touched" ]; then
-            echo "::error::agent touched files outside LoginTest.java: $touched"
-            exit 1
-          fi
-          if git diff --quiet -- src/test/java/tests/LoginTest.java; then
-            echo "::error::agent produced no change to LoginTest.java"
-            exit 1
-          fi
-          git diff -- src/test/java/tests/LoginTest.java
-
-      - name: Hand the healed test to verify
-        run: |
-          mkdir -p build/healed
-          cp src/test/java/tests/LoginTest.java build/healed/
-
-      - name: Upload healed test
+      - name: Upload the candidate test
         uses: actions/upload-artifact@v7
         with:
-          name: healed-test
-          path: build/healed/
+          name: login-candidate
+          path: src/test/java/tests/LoginTest.java
+          if-no-files-found: error
           retention-days: 1
 
   verify:
-    name: verify + commit
     needs: heal
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # commits the verified test back to main
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Java 21 (Temurin)
-        uses: actions/setup-java@v6
+      - uses: actions/checkout@v7
         with:
-          distribution: temurin
-          java-version: '21'
+          persist-credentials: false
+      - uses: ./.github/actions/test-env
 
-      - name: Test environment (caches, Gradle, headless)
-        uses: ./.github/actions/test-env
-
-      - name: Download healed test
+      - name: Download the candidate test
         uses: actions/download-artifact@v8
         with:
-          name: healed-test
-          path: build/healed
+          name: login-candidate
+          path: build/heal
 
-      - name: Apply healed test
-        run: cp build/healed/LoginTest.java src/test/java/tests/LoginTest.java
-
-      # cleanTest forces re-execution: the agent already ran the test inside
-      # its loop, and up-to-date results would skip execution entirely.
-      - name: Browser login test — independent verification
-        shell: bash  # pipefail: a red rerun must fail the job, not tee's 0
+      - name: Apply and verify the candidate
         run: |
-          mkdir -p build/heal
-          gradle cleanTest test --tests 'tests.LoginTest.successfulLoginTest' 2>&1 | tee build/heal/verify.log
+          cp build/heal/LoginTest.java src/test/java/tests/LoginTest.java
+          git diff --check
+          gradle test --rerun --tests 'tests.LoginTest.successfulLoginTest'
+          git diff -- src/test/java/tests/LoginTest.java > build/heal/login-test.patch
 
-      - name: Upload verify log on failure
+      - name: Upload the verified patch
+        uses: actions/upload-artifact@v7
+        with:
+          name: verified-login-patch
+          path: build/heal/login-test.patch
+
+      - name: Upload verification reports on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: verify-log
-          path: build/heal/verify.log
+          name: login-verification-failure
+          path: |
+            build/test-results/test/
+            build/reports/tests/
           retention-days: 7
-
-      # The applied file is already verified green by the step above —
-      # commit it without a third paid pipeline pass ([skip ci]).
-      - name: Commit verified test to main
-        run: |
-          git diff -- src/test/java/tests/LoginTest.java
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/test/java/tests/LoginTest.java
-          git commit -m "Heal login test with agent [skip ci]"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main

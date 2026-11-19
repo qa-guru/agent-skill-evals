@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-cd "$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$(CDPATH='' cd "$(dirname "$0")/.." && pwd)"
 
 usage() { printf "%s\n" "Usage: sh tools/git.sh status|diff|check" >&2; exit 64; }
 [ "$#" -eq 1 ] || usage

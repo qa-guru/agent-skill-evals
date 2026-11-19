@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-cd "$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$(CDPATH='' cd "$(dirname "$0")/.." && pwd)"
 
 [ "$#" -eq 0 ] || { printf "%s\n" "Usage: sh tools/versions.sh" >&2; exit 64; }
 export LC_ALL=C

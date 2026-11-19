@@ -1,5 +1,5 @@
 plugins {
-    id 'java-library'
+    id 'java'
 }
 
 java {
@@ -26,6 +26,7 @@ tasks.withType(JavaCompile) {
 
 test {
     useJUnitPlatform()
+    systemProperty 'selenide.headless', System.getenv('CI') == 'true'
     reports.html.required = true
     reports.junitXml.required = true
 }

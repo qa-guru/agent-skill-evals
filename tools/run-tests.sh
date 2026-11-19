@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-cd "$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$(CDPATH='' cd "$(dirname "$0")/.." && pwd)"
 
 usage() {
   printf "%s\n" "Usage: sh tools/run-tests.sh list | --allow-sut one CASE | --allow-sut group AREA | --allow-sut all" >&2
@@ -19,28 +19,19 @@ case "${1-}" in
   *) usage ;;
 esac
 
-require_sut() {
-  [ "$allow_sut" = true ] || {
-    printf "%s\n" "BLOCKED: approve the selected browser/SUT scope and any registration writes before using --allow-sut." >&2
-    exit 77
-  }
-}
-
 case "$1:${2-}" in
-  'one:login-success')
-    require_sut
-    printf '%s\n' '+ gradle --offline test --tests '\''tests.LoginTest.successfulLoginTest'\'''
-    exec gradle --offline test --tests 'tests.LoginTest.successfulLoginTest'
-    ;;
-  'group:login')
-    require_sut
-    printf '%s\n' '+ gradle --offline test --tests '\''tests.LoginTest'\'''
-    exec gradle --offline test --tests 'tests.LoginTest'
-    ;;
-  'all:')
-    require_sut
-    printf '%s\n' '+ gradle --offline test'
-    exec gradle --offline test
-    ;;
+  'one:login-success') set -- --tests 'tests.LoginTest.successfulLoginTest' ;;
+  'group:login') set -- --tests 'tests.LoginTest' ;;
+  'all:') set -- ;;
   *) usage ;;
 esac
+
+if [ "$allow_sut" = false ]; then
+  printf '%s\n' 'BLOCKED: approve the selected browser test before using --allow-sut.' >&2
+  exit 77
+fi
+
+printf '+ gradle --offline test --rerun'
+for arg in "$@"; do printf " '%s'" "$arg"; done
+printf '\n'
+exec gradle --offline test --rerun "$@"
