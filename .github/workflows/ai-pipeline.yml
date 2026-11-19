@@ -125,3 +125,47 @@ jobs:
             build/test-results/test/
             build/reports/tests/
           retention-days: 7
+
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download the candidate checked by verify
+        uses: actions/download-artifact@v8
+        with:
+          name: test-candidate
+          path: ${{ runner.temp }}/verified-test-fix
+
+      - name: Commit and push the verified test fix
+        shell: bash
+        run: |
+          git fetch --no-tags origin refs/heads/main
+          if [ "$(git rev-parse FETCH_HEAD)" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::main moved after verification; the test fix was not published."
+            exit 1
+          fi
+
+          git apply --index "$RUNNER_TEMP/verified-test-fix/test-fix.patch"
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "::error::The verified patch contains no changes."
+            exit 1
+          fi
+          if ! git diff --cached --quiet -- . ':(exclude,glob)src/test/java/**/*.java' ||
+             [ -n "$(git diff --cached --summary)" ]; then
+            echo "::error::Only edits to existing Java test files can be published."
+            exit 1
+          fi
+
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'Heal failing tests [skip ci]' \
+                     -m "Verified by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          git push origin HEAD:refs/heads/main

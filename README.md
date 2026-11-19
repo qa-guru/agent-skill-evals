@@ -55,8 +55,11 @@ manual dispatch. Chrome runs headless.
    the application or build. The paid step needs the `OPENAI_API_KEY` secret.
 3. **verify** applies the candidate on a fresh runner without the API key,
    runs the full suite, and checks that the original tests still execute and
-   pass. Download `verified-test-patch` and review the diff before applying it.
-   The workflow never pushes a commit.
+   pass. The diff is also available as the `verified-test-patch` artifact.
+4. **publish** commits the verified Java test changes to `main` as
+   `github-actions[bot]`. Only this job has write access, and it runs no tests.
+   If `main` has moved since the run started, it refuses to push the old fix.
+   Runs on other branches do not publish.
 
 Add a new JUnit class under `src/test/java` and Gradle discovers it. The healer
 uses the class names in the reports, not a list of registered tests.
