@@ -15,6 +15,6 @@ class LoginTest {
         $("[data-testid=login-input]").setValue("user1");
         $("[data-testid=password-input]").setValue("password1");
         $("[data-testid=submit-button]").click();
-        $("[data-testid=hello-banner]").shouldHave(text("Happy new year, user1!"));
+        $("[data-testid=hello-banner]").shouldHave(text("Hello, user1!"));
     }
 }
